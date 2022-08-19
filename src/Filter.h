@@ -27,11 +27,11 @@
 /*                                                                     */
 /*   // x1を高域遮断周波数2.0Hzのローパスフィルタに設定                */
 /*   // フィルタリングを実行する周期が10msの場合                       */
-/*   CFirstFilter x1(LPF, 2.0, 10);                                    */
+/*   FirstFilter x1(LPF, 2.0, 10);                                    */
 /*                                                                     */
 /*   // x2を低域遮断周波数1.0Hzのハイパスフィルタに設定                */
 /*   // フィルタリングを実行する周期が10msの場合                       */
-/*   CFirstFilter x2(HPF, 1.0, 10);                                    */
+/*   FirstFilter x2(HPF, 1.0, 10);                                    */
 /*                                                                     */
 /*   while (1) {                                                       */
 /*     if (CYCLE_TIMEごとに真) {                                       */
@@ -48,9 +48,7 @@
 /* }                                                                   */
 /*                                                                     */
 /***********************************************************************/
-
-#ifndef _CFILTER_HPP__
-#define _CFILTER_HPP__
+#pragma once
 
 #include "fix.h"
 
@@ -75,10 +73,10 @@ typedef struct firstfilter
 } firstFilterType;
 
 // クラス
-class CFirstFilter
+class FirstFilter
 {
 public:
-  CFirstFilter(enum eFILT_MODE fimo, float freq, uint16_t cycleTime, fix x0 = 0);
+  FirstFilter(enum eFILT_MODE fimo, float freq, uint16_t cycleTime, fix x0 = 0);
   fix getLPF(void);
   fix getOut(void);
   fix firstFiltering(fix in);
@@ -94,11 +92,11 @@ private:
 /***********************************************************************/
 
 // クラス
-class CMovAveFilter
+class MovAveFilter
 {
 public:
-  CMovAveFilter(uint8_t size, fix x0);
-  ~CMovAveFilter();
+  MovAveFilter(uint8_t size, fix x0);
+  ~MovAveFilter();
   fix movingAverage(fix xn);
   fix getOut(void);
 
@@ -113,5 +111,3 @@ private:
     uint8_t now;  /* リングバッファ用現在値 */
   } m_Filter;
 };
-
-#endif // _CFILTER_HPP__

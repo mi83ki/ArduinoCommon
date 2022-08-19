@@ -22,14 +22,14 @@
 #endif
 
 /* フィルタの時定数を計算する関数 */
-fix CFirstFilter::calcTC(float freq, uint16_t cycleTime)
+fix FirstFilter::calcTC(float freq, uint16_t cycleTime)
 {
   freq = 1.0 - expf(-2.0 * MY_PI * freq * (float)cycleTime / 1000.0f);
   return (FLOAT_TO_FIX(freq));
 }
 
 /* 時定数からカットオフ周波数を計算 */
-float CFirstFilter::calcFREQ(fix tc, uint16_t cycleTime)
+float FirstFilter::calcFREQ(fix tc, uint16_t cycleTime)
 {
   float temp = FIX_TO_FLOAT(tc);
   temp = 1.0 - temp;
@@ -37,7 +37,7 @@ float CFirstFilter::calcFREQ(fix tc, uint16_t cycleTime)
 }
 
 /* フィルタを使う構造体の初期化 */
-CFirstFilter::CFirstFilter(enum eFILT_MODE fimo, float freq, uint16_t cycleTime, fix x0)
+FirstFilter::FirstFilter(enum eFILT_MODE fimo, float freq, uint16_t cycleTime, fix x0)
 {
   m_Filter.out = 0;
   m_Filter.mode = fimo;
@@ -46,19 +46,19 @@ CFirstFilter::CFirstFilter(enum eFILT_MODE fimo, float freq, uint16_t cycleTime,
 }
 
 // ローパスフィルタ値を返す
-fix CFirstFilter::getLPF(void)
+fix FirstFilter::getLPF(void)
 {
   return (m_Filter.lpf);
 }
 
 // フィルタ出力値を返す
-fix CFirstFilter::getOut(void)
+fix FirstFilter::getOut(void)
 {
   return (m_Filter.out);
 }
 
 /* 1次フィルタをかける関数 */
-fix CFirstFilter::firstFiltering(fix in)
+fix FirstFilter::firstFiltering(fix in)
 {
   m_Filter.lpf += FIX_MUL(in - m_Filter.lpf, m_Filter.tc);
   if (m_Filter.mode == LPF)
@@ -77,7 +77,7 @@ fix CFirstFilter::firstFiltering(fix in)
 #define NEXT(n, size) (((n) + 1) % (size))
 #define BEFORE(n, size) (((n) + (size)-1) % (size))
 
-CMovAveFilter::CMovAveFilter(uint8_t size, fix x0)
+MovAveFilter::MovAveFilter(uint8_t size, fix x0)
 {
   uint8_t i;
   m_Filter.out = 0;
@@ -91,12 +91,12 @@ CMovAveFilter::CMovAveFilter(uint8_t size, fix x0)
   m_Filter.sum = (int64_t)x0 * (int64_t)size;
 }
 
-CMovAveFilter::~CMovAveFilter()
+MovAveFilter::~MovAveFilter()
 {
   delete[] m_Filter.data;
 }
 
-fix CMovAveFilter::movingAverage(fix xn)
+fix MovAveFilter::movingAverage(fix xn)
 {
   m_Filter.sum -= (int64_t)m_Filter.data[m_Filter.now]; /* 一番古いのを消して */
   m_Filter.sum += (int64_t)xn;                          /* 一番新しいのを足す */
@@ -108,7 +108,7 @@ fix CMovAveFilter::movingAverage(fix xn)
 }
 
 // フィルタ出力値を返す
-fix CMovAveFilter::getOut(void)
+fix MovAveFilter::getOut(void)
 {
   return (m_Filter.out);
 }
