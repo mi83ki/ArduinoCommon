@@ -10,7 +10,7 @@
 /***********************************************************************/
 #pragma once
 
-#include <arduino.h>
+#include <Arduino.h>
 
 typedef int32_t fix;
 

@@ -19,11 +19,14 @@
 Timer::Timer()
 {
   tempTimer = 0;
+  pastTime = 0;
+  cycleTime = 0;
 }
 
 // コンストラクタ(周期[ms])
 Timer::Timer(uint16_t time)
 {
+  tempTimer = 0;
   pastTime = 0;
   cycleTime = time;
 }

@@ -21,7 +21,7 @@ public:
   // コンストラクタ
   Timer();
   // コンストラクタ(周期[ms])
-  Timer(uint16_t cycleTime);
+  explicit Timer(uint16_t cycleTime);
   // 周期を設定する
   void setCycleTime(uint16_t time);
   // 周期が来たことを知らせ、フラグをクリアする（1:周期がきた、0:周期でない）
