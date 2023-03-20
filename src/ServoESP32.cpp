@@ -8,6 +8,8 @@
  * @note ESP32のledcを使用
  */
 
+#include <Arduino.h>
+
 #include "ServoESP32.h"
 
 /** 角度[deg]（97.28分解能 / 180deg） */
@@ -23,14 +25,31 @@ const float ServoESP32::PULSE_OFFSET = 25.6f;
  */
 ServoESP32::ServoESP32(uint8_t ch, uint8_t pin)
 {
-  ledcSetup(ch, 50, 10); // 50 Hz 10bit resolution
   _ch = ch;
   _pin = pin;
   _pulse = 0;
+  _timer = new Timer(10);
+  _delta = new LinearChanger(10, 90.0f, 90.0f);
+  ledcSetup(_ch, 50, 10); // 50 Hz 10bit resolution
   ledcAttachPin(_pin, _ch);
   ledcWrite(_ch, 0);
-  _timer = Timer(10);
-  _delta = LinearChanger(10, 90.0f, 90.0f);
+}
+
+/**
+ * @brief コピーコンストラクタ
+ *
+ * @param other
+ */
+ServoESP32::ServoESP32(const ServoESP32& other)
+{
+  _ch = other._ch;
+  _pin = other._pin;
+  _pulse = other._pulse;
+  _timer = new Timer(other._timer->getCycleTime());
+  _delta = new LinearChanger(other._delta->getCycleTime(), other._delta->getIncrease(), other._delta->getDecrease());
+  ledcSetup(_ch, 50, 10); // 50 Hz 10bit resolution
+  ledcAttachPin(_pin, _ch);
+  ledcWrite(_ch, 0);
 }
 
 /**
@@ -39,6 +58,8 @@ ServoESP32::ServoESP32(uint8_t ch, uint8_t pin)
 ServoESP32::~ServoESP32()
 {
   ledcDetachPin(_pin);
+  delete _timer;
+  delete _delta;
 }
 
 /**

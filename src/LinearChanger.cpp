@@ -8,11 +8,13 @@
  * @note 浮動小数点演算ではなく、固定小数点演算(fix.hpp)を行います（処理の高速化のため）
  */
 
+#include <Arduino.h>
+
 #include "LinearChanger.h"
 
 /**
  * コンストラクタ
- * @param time 実行周期[ms]
+ * @param time 更新周期[ms]
  * @param increase 加速度
  * @param decrease 減速度
  */
@@ -38,7 +40,7 @@ LinearChanger::~LinearChanger()
  *
  * @return fix 増減量を返す
  */
-fix LinearChanger::getIncrease(void)
+fix LinearChanger::getDelta(void)
 {
   if (_present == _target)
   {
@@ -80,7 +82,7 @@ fix LinearChanger::getIncrease(void)
  */
 fix LinearChanger::updateFix(void)
 {
-  fix increase = getIncrease();
+  fix increase = getDelta();
   if (_present < _target)
   {
     _present += FIX_MUL(increase, _cycleTime);
@@ -193,6 +195,16 @@ void LinearChanger::setIncrease(float increase)
 }
 
 /**
+ * @brief 単位時間当たりの増加量を取得する
+ *
+ * @return float 単位時間当たりの増加量
+ */
+float LinearChanger::getIncrease(void)
+{
+  return FIX_TO_FLOAT(_increase);
+}
+
+/**
  * @brief 単位時間当たりの減少量を設定する
  *
  * @param decrease 単位時間当たりの減少量
@@ -200,4 +212,24 @@ void LinearChanger::setIncrease(float increase)
 void LinearChanger::setDecrease(float decrease)
 {
   _decrease = FLOAT_TO_FIX(decrease);
+}
+
+/**
+ * @brief 単位時間当たりの減少量を取得する
+ *
+ * @return float 単位時間当たりの減少量
+ */
+float LinearChanger::getDecrease(void)
+{
+  return FIX_TO_FLOAT(_decrease);
+}
+
+/**
+ * @brief 更新周期[ms]を取得する
+ *
+ * @return uint16_t 更新周期[ms]
+ */
+uint16_t LinearChanger::getCycleTime(void)
+{
+  return FIX_TO_INT(_cycleTime);
 }

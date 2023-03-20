@@ -8,6 +8,8 @@
 /*                                                                     */
 /***********************************************************************/
 
+#include <Arduino.h>
+
 #include "Timer.h"
 
 /***********************************************************************/
@@ -35,6 +37,16 @@ Timer::Timer(uint16_t time)
 void Timer::setCycleTime(uint16_t time)
 {
   cycleTime = time;
+}
+
+/**
+ * @brief 周期[ms]を取得する
+ *
+ * @return uint16_t 周期[ms]
+ */
+uint16_t Timer::getCycleTime(void)
+{
+  return cycleTime;
 }
 
 // 周期が来たことを知らせ、フラグをクリアする（1:周期がきた、0:周期でない）

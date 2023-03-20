@@ -24,6 +24,7 @@ ConstructorInitializerIndentWidth: 2
 ContinuationIndentWidth: 2
 Cpp11BracedListStyle: true
 DerivePointerBinding: true
+IncludeBlocks: Regroup
 IndentCaseLabels: true
 IndentWidth: 2
 IndentWrappedFunctionNames: false
@@ -41,3 +42,6 @@ SpacesInParentheses: false
 Standard: 'Cpp11'
 TabWidth: 4
 UseTab: 'Never'
+IncludeCategories:
+  - Regex: '<Arduino.h>'
+    Priority: -1

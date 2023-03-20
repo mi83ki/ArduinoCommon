@@ -24,6 +24,7 @@ public:
   explicit Timer(uint16_t cycleTime);
   // 周期を設定する
   void setCycleTime(uint16_t time);
+  uint16_t getCycleTime(void);
   // 周期が来たことを知らせ、フラグをクリアする（1:周期がきた、0:周期でない）
   uint8_t isCycleTime(void);
   // タイマーをクリアする
@@ -31,10 +32,7 @@ public:
   // タイマー値[ms]を取得する
   uint32_t getTime(void);
   // タイマー値[ms]を取得する
-  static uint32_t getGlobalTime(void)
-  {
-    return (millis());
-  }
+  static uint32_t getGlobalTime(void) { return (millis()); }
 
 private:
   uint32_t tempTimer; // 1msの割り込みでインクリメントされる変数

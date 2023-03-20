@@ -29,10 +29,13 @@ public:
   float getPresent(void);
   bool isTarget(void);
   void setIncrease(float);
+  float getIncrease(void);
   void setDecrease(float);
+  float getDecrease(void);
+  uint16_t getCycleTime(void);
 
 private:
-  fix getIncrease(void);
+  fix getDelta(void);
 
   /** 現在値 */
   fix _present;
@@ -42,6 +45,6 @@ private:
   fix _increase;
   /** 単位時間当たりの減少量 */
   fix _decrease;
-  /** 処理周期[ms] */
+  /** 更新周期[ms] */
   fix _cycleTime;
 };

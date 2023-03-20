@@ -11,8 +11,11 @@
 #ifndef _CFILTER_CPP__
 #define _CFILTER_CPP__
 
-#include <math.h>
+#include <Arduino.h>
+
 #include "Filter.h"
+
+#include <math.h>
 
 /***********************************************************************/
 /*                      1次のフィルタリング関数                        */

@@ -19,6 +19,7 @@ class ServoESP32
 {
 public:
   ServoESP32(uint8_t, uint8_t);
+  ServoESP32(const ServoESP32& other);
   ~ServoESP32();
   void setServoAngle(float);
   void setTargetAngle(float);
@@ -26,6 +27,23 @@ public:
   bool isTargetAngle(void);
   void setAngularVelocity(float);
   void loop(void);
+
+  // 代入演算子
+  ServoESP32& operator=(const ServoESP32& other)
+  {
+    if (this != &other)
+    {
+      _ch = other._ch;
+      _pin = other._pin;
+      _pulse = other._pulse;
+      delete _timer;
+      _timer = new Timer(other._timer->getCycleTime());
+      delete _delta;
+      _delta =
+        new LinearChanger(other._delta->getCycleTime(), other._delta->getIncrease(), other._delta->getDecrease());
+    }
+    return *this;
+  }
 
 private:
   float checkAngle(float);
@@ -40,7 +58,7 @@ private:
   /** PWM比較一致パルス */
   uint16_t _pulse;
   /** タイマー */
-  Timer _timer;
+  Timer* _timer;
   /** 加減速制御インスタンス */
-  LinearChanger _delta;
+  LinearChanger* _delta;
 };
