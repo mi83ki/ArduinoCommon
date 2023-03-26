@@ -29,10 +29,33 @@ ServoESP32::ServoESP32(uint8_t ch, uint8_t pin)
   _pin = pin;
   _pulse = 0;
   _timer = new Timer(10);
-  _delta = new LinearChanger(10, 90.0f, 90.0f);
+  _angVel = 90.0f;
+  _delta = new LinearChanger(10, _angVel, _angVel);
   ledcSetup(_ch, 50, 10); // 50 Hz 10bit resolution
   ledcAttachPin(_pin, _ch);
   ledcWrite(_ch, 0);
+}
+
+/**
+ * @brief Construct a new Servo E S P 3 2:: Servo E S P 3 2 object
+ *
+ * @param ch 使用するledcチャンネル
+ * @param pin RCサーボのPWM入力に接続しているピン（0,2,4,12,13,14,15,25,26,27,32,33）
+ * @param initAngle 初期角度[deg]
+ * @param angVel 回転角速度[deg/s]
+ */
+ServoESP32::ServoESP32(uint8_t ch, uint8_t pin, float initAngle, float angVel)
+{
+  _ch = ch;
+  _pin = pin;
+  _pulse = 0;
+  _timer = new Timer(10);
+  _angVel = angVel;
+  _delta = new LinearChanger(10, _angVel, _angVel);
+  ledcSetup(_ch, 50, 10); // 50 Hz 10bit resolution
+  ledcAttachPin(_pin, _ch);
+  ledcWrite(_ch, 0);
+  setServoAngle(initAngle);
 }
 
 /**
@@ -46,7 +69,8 @@ ServoESP32::ServoESP32(const ServoESP32& other)
   _pin = other._pin;
   _pulse = other._pulse;
   _timer = new Timer(other._timer->getCycleTime());
-  _delta = new LinearChanger(other._delta->getCycleTime(), other._delta->getIncrease(), other._delta->getDecrease());
+  _angVel = other._angVel;
+  _delta = new LinearChanger(other._delta->getCycleTime(), _angVel, _angVel);
   ledcSetup(_ch, 50, 10); // 50 Hz 10bit resolution
   ledcAttachPin(_pin, _ch);
   ledcWrite(_ch, 0);
@@ -82,13 +106,26 @@ float ServoESP32::checkAngle(float angle)
  *
  * @param angle 指定した角度(-90～90deg)
  */
-void ServoESP32::setServoAngle(float angle)
+float ServoESP32::setServoAngle(float angle)
+{
+  angle = moveServo(angle);
+  _delta->setPresent(angle);
+  _delta->setTarget(angle);
+  return angle;
+}
+
+/**
+ * @brief 指定した角度にRCサーボを動かす
+ *
+ * @param angle 指定した角度(-90～90deg)
+ */
+float ServoESP32::moveServo(float angle)
 {
   angle = checkAngle(angle);
-  angle += 90.0f;
-  _pulse = PULSE_OFFSET + DEG_TO_PULSE * angle + 0.5f;
+  _pulse = PULSE_OFFSET + DEG_TO_PULSE * (angle + 90.0f) + 0.5f;
   ledcWrite(_ch, _pulse);
   // Serial.println("serServoAngle(): angle = " + String(angle) + ", pulse = " + String(_pulse));
+  return angle;
 }
 
 /**
@@ -115,6 +152,16 @@ void ServoESP32::setTargetAngle(float angle, float angVel)
     setAngularVelocity(angVel);
   }
   setTargetAngle(angle);
+}
+
+/**
+ * @brief 目標角度を取得する
+ * 
+ * @return float 目標角度[deg]
+ */
+float ServoESP32::getTargetAngle(void)
+{
+  return _delta->getTarget();
 }
 
 /**
@@ -148,7 +195,7 @@ void ServoESP32::loop(void)
     if (!isTargetAngle())
     {
       _delta->update();
-      setServoAngle((int16_t)_delta->getPresent());
+      moveServo(_delta->getPresent());
     }
   }
 }
