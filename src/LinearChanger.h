@@ -27,6 +27,7 @@ public:
   float getTarget(void);
   fix getPresentFix(void);
   float getPresent(void);
+  void setPresent(float);
   bool isTarget(void);
   void setIncrease(float);
   float getIncrease(void);

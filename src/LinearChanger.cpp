@@ -174,6 +174,16 @@ float LinearChanger::getPresent(void)
 }
 
 /**
+ * @brief 現在値を設定する
+ *
+ * @param present 現在値
+ */
+void LinearChanger::setPresent(float present)
+{
+  _present = FLOAT_TO_FIX(present);
+}
+
+/**
  * @brief 目標値に到達したかどうか
  *
  * @return true 目標値に到達
