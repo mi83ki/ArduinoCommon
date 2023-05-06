@@ -26,6 +26,7 @@ public:
   void setTargetAngle(float);
   void setTargetAngle(float, float);
   float getTargetAngle(void);
+  float getPresentAngle(void);
   bool isTargetAngle(void);
   void setAngularVelocity(float);
   void loop(void);

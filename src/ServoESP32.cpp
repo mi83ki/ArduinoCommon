@@ -165,6 +165,16 @@ float ServoESP32::getTargetAngle(void)
 }
 
 /**
+ * @brief 現在角度を取得する
+ * 
+ * @return float 現在角度[deg]
+ */
+float ServoESP32::getPresentAngle(void)
+{
+  return _delta->getPresent();
+}
+
+/**
  * 指示が目標角度になったかどうか
  * @returns True:目標角度になった、False:目標角度にになっていない
  */
