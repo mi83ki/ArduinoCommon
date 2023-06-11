@@ -78,6 +78,7 @@ class FirstFilter
 public:
   FirstFilter(enum eFILT_MODE fimo, float freq, uint16_t cycleTime, fix x0 = 0);
   fix getLPF(void);
+  void setLPF(fix);
   fix getOut(void);
   fix firstFiltering(fix in);
 

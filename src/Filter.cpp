@@ -54,6 +54,12 @@ fix FirstFilter::getLPF(void)
   return (m_Filter.lpf);
 }
 
+// ローパスフィルタ値を設定する
+void FirstFilter::setLPF(fix lpf)
+{
+  m_Filter.lpf = lpf;
+}
+
 // フィルタ出力値を返す
 fix FirstFilter::getOut(void)
 {
