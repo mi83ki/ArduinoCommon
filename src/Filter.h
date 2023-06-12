@@ -63,29 +63,27 @@ enum eFILT_MODE
   HPF
 };
 
-// 構造体
-typedef struct firstfilter
-{                       /* フィルタを使う変数の構造体 */
-  fix out;              /* フィルタ後の出力値 */
-  enum eFILT_MODE mode; /* ローパスかハイパスか */
-  fix tc;               /* 時定数 */
-  fix lpf;              /* ローパスフィルタ値 */
-} firstFilterType;
-
 // クラス
 class FirstFilter
 {
 public:
-  FirstFilter(enum eFILT_MODE fimo, float freq, uint16_t cycleTime, fix x0 = 0);
+  FirstFilter(enum eFILT_MODE, float, uint16_t, fix x0 = 0);
   fix getLPF(void);
   void setLPF(fix);
   fix getOut(void);
-  fix firstFiltering(fix in);
+  fix firstFiltering(fix);
 
 private:
-  firstFilterType m_Filter;
-  fix calcTC(float freq, uint16_t cycleTime);
-  float calcFREQ(fix tc, uint16_t cycleTime);
+  fix calcTC(float, uint16_t);
+  float calcFREQ(fix, uint16_t);
+  /** フィルタ後の出力値 */
+  fix _out;
+  /** ローパスかハイパスか */
+  enum eFILT_MODE _mode;
+  /** 時定数 */
+  fix _tc;
+  /** ローパスフィルタ値 */
+  fix _lpf;
 };
 
 /***********************************************************************/
@@ -96,19 +94,21 @@ private:
 class MovAveFilter
 {
 public:
-  MovAveFilter(uint8_t size, fix x0);
+  MovAveFilter(uint8_t, fix x0 = 0);
   ~MovAveFilter();
-  fix movingAverage(fix xn);
+  void setData(fix);
+  fix movingAverage(fix);
   fix getOut(void);
 
 private:
-  // 構造体
-  struct movave
-  {
-    fix out;
-    fix *data;    /* 過去のデータを記憶しておくバッファ */
-    int64_t sum;  /* 合計 */
-    uint8_t size; /* 平均をとる個数 */
-    uint8_t now;  /* リングバッファ用現在値 */
-  } m_Filter;
+  /** 移動平均出力値 */
+  fix _out;
+  /** 平均をとる個数 */
+  uint8_t _size;
+  /** リングバッファ用現在値 */
+  uint8_t _now;
+  /** 過去のデータを記憶しておくバッファ */
+  fix *_data;
+  /** 合計 */
+  int64_t _sum;
 };

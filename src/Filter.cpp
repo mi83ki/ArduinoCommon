@@ -8,9 +8,6 @@
 /*                                                                     */
 /***********************************************************************/
 
-#ifndef _CFILTER_CPP__
-#define _CFILTER_CPP__
-
 #include <Arduino.h>
 
 #include "Filter.h"
@@ -41,42 +38,39 @@ float FirstFilter::calcFREQ(fix tc, uint16_t cycleTime)
 
 /* フィルタを使う構造体の初期化 */
 FirstFilter::FirstFilter(enum eFILT_MODE fimo, float freq, uint16_t cycleTime, fix x0)
+  : _out(0), _mode(fimo), _tc(calcTC(freq, cycleTime)), _lpf(x0)
 {
-  m_Filter.out = 0;
-  m_Filter.mode = fimo;
-  m_Filter.tc = calcTC(freq, cycleTime);
-  m_Filter.lpf = x0;
 }
 
 // ローパスフィルタ値を返す
 fix FirstFilter::getLPF(void)
 {
-  return (m_Filter.lpf);
+  return (_lpf);
 }
 
 // ローパスフィルタ値を設定する
 void FirstFilter::setLPF(fix lpf)
 {
-  m_Filter.lpf = lpf;
+  _lpf = lpf;
 }
 
 // フィルタ出力値を返す
 fix FirstFilter::getOut(void)
 {
-  return (m_Filter.out);
+  return (_out);
 }
 
 /* 1次フィルタをかける関数 */
 fix FirstFilter::firstFiltering(fix in)
 {
-  m_Filter.lpf += FIX_MUL(in - m_Filter.lpf, m_Filter.tc);
-  if (m_Filter.mode == LPF)
-    m_Filter.out = m_Filter.lpf;
-  else if (m_Filter.mode == HPF)
-    m_Filter.out = in - m_Filter.lpf;
+  _lpf += FIX_MUL(in - _lpf, _tc);
+  if (_mode == LPF)
+    _out = _lpf;
+  else if (_mode == HPF)
+    _out = in - _lpf;
   else
-    m_Filter.out = 0;
-  return (m_Filter.out);
+    _out = 0;
+  return (_out);
 }
 
 /***********************************************************************/
@@ -86,40 +80,44 @@ fix FirstFilter::firstFiltering(fix in)
 #define NEXT(n, size) (((n) + 1) % (size))
 #define BEFORE(n, size) (((n) + (size)-1) % (size))
 
-MovAveFilter::MovAveFilter(uint8_t size, fix x0)
+MovAveFilter::MovAveFilter(uint8_t size, fix x0) : _out(x0), _size(size), _now(0), _sum(x0 * size)
 {
-  uint8_t i;
-  m_Filter.out = 0;
-  m_Filter.data = new fix[size];
-  m_Filter.size = size;
-  m_Filter.now = 0;
-  for (i = 0; i < m_Filter.size; i++)
-  {
-    m_Filter.data[i] = x0;
-  }
-  m_Filter.sum = (int64_t)x0 * (int64_t)size;
+  _data = new fix[_size];
+  setData(x0);
 }
 
 MovAveFilter::~MovAveFilter()
 {
-  delete[] m_Filter.data;
+  delete[] _data;
+}
+
+/**
+ * @brief 指定した値で移動平均バッファの値を初期化する
+ *
+ * @param x0
+ */
+void MovAveFilter::setData(fix x0)
+{
+  for (uint8_t i = 0; i < _size; i++)
+  {
+    _data[i] = x0;
+  }
+  _sum = (int64_t)x0 * (int64_t)_size;
 }
 
 fix MovAveFilter::movingAverage(fix xn)
 {
-  m_Filter.sum -= (int64_t)m_Filter.data[m_Filter.now]; /* 一番古いのを消して */
-  m_Filter.sum += (int64_t)xn;                          /* 一番新しいのを足す */
-  m_Filter.data[m_Filter.now] = xn;                     /* バッファに書きこむ */
-  m_Filter.now = NEXT(m_Filter.now, m_Filter.size);
+  _sum -= (int64_t)_data[_now]; /* 一番古いのを消して */
+  _sum += (int64_t)xn;          /* 一番新しいのを足す */
+  _data[_now] = xn;             /* バッファに書きこむ */
+  _now = NEXT(_now, _size);
 
-  m_Filter.out = (fix)(m_Filter.sum / (int64_t)m_Filter.size);
-  return (m_Filter.out);
+  _out = (fix)(_sum / (int64_t)_size);
+  return _out;
 }
 
 // フィルタ出力値を返す
 fix MovAveFilter::getOut(void)
 {
-  return (m_Filter.out);
+  return _out;
 }
-
-#endif // _CFILTER_CPP__
