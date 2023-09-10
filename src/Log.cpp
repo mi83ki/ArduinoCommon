@@ -18,13 +18,17 @@
 
 Log::Log()
 {
+#ifndef USE_M5ATOM_S3
   Serial.begin(115200);
+#endif
   m_level = LOG_LEVEL_INIT;
 }
 
 Log::~Log()
 {
+#ifndef USE_M5ATOM_S3
   Serial.end();
+#endif
 }
 
 // 出力レベルを取得する
@@ -66,7 +70,11 @@ void Log::log(logLevelEnum type, String msg)
     str.concat("ERROR,");
   }
   str.concat(msg);
+#ifndef USE_M5ATOM_S3
+  USBSerial.println(str);
+#else
   Serial.println(str);
+#endif
 }
 
 void Log::info(String msg)
