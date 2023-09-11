@@ -70,7 +70,7 @@ void Log::log(logLevelEnum type, String msg)
     str.concat("ERROR,");
   }
   str.concat(msg);
-#ifndef USE_M5ATOM_S3
+#ifdef USE_M5ATOM_S3
   USBSerial.println(str);
 #else
   Serial.println(str);
