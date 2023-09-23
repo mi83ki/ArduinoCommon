@@ -15,14 +15,14 @@
  * @brief Construct a new Timer:: Timer object
  *
  */
-Timer::Timer() : startTime(0), stopTime(0), pastTime(0), cycleTime(0) {}
+Timer::Timer() : startTime(millis()), stopTime(millis()), pastTime(0), cycleTime(0) {}
 
 /**
  * @brief Construct a new Timer:: Timer object
  * 
  * @param time 周期[ms]
  */
-Timer::Timer(uint16_t time) : startTime(0), stopTime(0), pastTime(0), cycleTime(time) {}
+Timer::Timer(uint16_t time) : startTime(millis()), stopTime(millis()), pastTime(0), cycleTime(time) {}
 
 /**
  * @brief 周期を設定する
