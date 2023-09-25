@@ -112,3 +112,27 @@ private:
   /** 合計 */
   int64_t _sum;
 };
+
+/***********************************************************************/
+/*                          移動最大フィルタ                           */
+/***********************************************************************/
+
+class MovMaxFilter
+{
+public:
+  MovMaxFilter(uint8_t, float x0 = 0);
+  ~MovMaxFilter();
+  void setData(float);
+  float movingMax(float);
+  float getOut(void);
+
+private:
+  /** 平均をとる個数 */
+  uint8_t _size;
+  /** リングバッファ用現在値 */
+  uint8_t _now;
+  /** 過去のデータを記憶しておくバッファ */
+  float *_data;
+  /** 最大値 */
+  float _out;
+};

@@ -19,14 +19,14 @@ Timer::Timer() : startTime(millis()), stopTime(millis()), pastTime(0), cycleTime
 
 /**
  * @brief Construct a new Timer:: Timer object
- * 
+ *
  * @param time 周期[ms]
  */
 Timer::Timer(uint16_t time) : startTime(millis()), stopTime(millis()), pastTime(0), cycleTime(time) {}
 
 /**
  * @brief 周期を設定する
- * 
+ *
  * @param time 周期[ms]
  */
 void Timer::setCycleTime(uint16_t time)
@@ -46,7 +46,7 @@ uint16_t Timer::getCycleTime(void)
 
 /**
  * @brief 周期が来たことを知らせ、フラグをクリアする
- * 
+ *
  * @return true 周期がきた
  * @return false 周期でない
  */
@@ -60,7 +60,7 @@ bool Timer::isCycleTime(void)
 
 /**
  * @brief タイマーを開始する
- * 
+ *
  */
 void Timer::startTimer(void)
 {
@@ -70,7 +70,7 @@ void Timer::startTimer(void)
 
 /**
  * @brief タイマーを停止する
- * 
+ *
  */
 void Timer::stopTimer(void)
 {
@@ -79,7 +79,7 @@ void Timer::stopTimer(void)
 
 /**
  * @brief 経過時間[ms]を取得する
- * 
+ *
  * @return uint32_t 経過時間[ms]
  */
 uint32_t Timer::getTime(void)

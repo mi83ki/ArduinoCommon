@@ -12,7 +12,9 @@
 
 #include "Filter.h"
 
+#include <float.h>
 #include <math.h>
+
 
 /***********************************************************************/
 /*                      1次のフィルタリング関数                        */
@@ -118,6 +120,65 @@ fix MovAveFilter::movingAverage(fix xn)
 
 // フィルタ出力値を返す
 fix MovAveFilter::getOut(void)
+{
+  return _out;
+}
+
+/***********************************************************************/
+/*                          移動最大フィルタ                           */
+/***********************************************************************/
+
+MovMaxFilter::MovMaxFilter(uint8_t size, float x0) : _size(size), _now(0), _out(-1.0 * FLT_MAX)
+{
+  _data = new float[_size];
+  setData(x0);
+}
+
+MovMaxFilter::~MovMaxFilter()
+{
+  delete[] _data;
+}
+
+/**
+ * @brief 指定した値で移動最大バッファの値を初期化する
+ *
+ * @param x0
+ */
+void MovMaxFilter::setData(float x0)
+{
+  for (uint8_t i = 0; i < _size; i++)
+  {
+    _data[i] = x0;
+  }
+  _out = x0;
+}
+
+float MovMaxFilter::movingMax(float xn)
+{
+  if (xn > _out)
+  {
+    _out = xn;
+    _data[_now] = xn;
+  }
+  else if (_data[_now] == _out)
+  {
+    _data[_now] = xn;
+    _out = -1.0 * FLT_MAX;
+    for (uint8_t i = 0; i < _size; i++)
+    {
+      if (_data[i] > _out)
+      {
+        _out = _data[i];
+      }
+    }
+  }
+  _now = NEXT(_now, _size);
+
+  return _out;
+}
+
+// フィルタ出力値を返す
+float MovMaxFilter::getOut(void)
 {
   return _out;
 }
