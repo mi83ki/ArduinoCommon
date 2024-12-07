@@ -18,7 +18,9 @@
 
 Log::Log()
 {
-#ifndef USE_M5ATOM_S3
+#ifdef USE_M5ATOM_S3
+  USBSerial.begin(115200);
+#else
   Serial.begin(115200);
 #endif
   m_level = LOG_LEVEL_INIT;
@@ -26,7 +28,9 @@ Log::Log()
 
 Log::~Log()
 {
-#ifndef USE_M5ATOM_S3
+#ifdef USE_M5ATOM_S3
+  USBSerial.end();
+#else
   Serial.end();
 #endif
 }
