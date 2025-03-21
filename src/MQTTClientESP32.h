@@ -11,13 +11,23 @@
 
 #include <Arduino.h>
 
-#include <PubSubClient.h>
 #include <WiFi.h>
+
+#if __has_include(<PubSubClient.h>)
+#include <PubSubClient.h>
+#else
+#warning "PubSubClient.h が見つかりません。MQTT 機能は無効化されます。"
+// 必要に応じて、MQTT機能を無効化するためのマクロを定義する
+#define MQTT_FEATURE_DISABLED
+#endif
+
+#ifndef MQTT_FEATURE_DISABLED
 
 /** MQTTの接続リトライインターバル[ms] */
 #define MQTT_RECONNECT_INTERVAL (5000)
 
-class MQTTClientESP32 {
+class MQTTClientESP32
+{
 public:
   MQTTClientESP32(String, uint16_t, uint16_t bufferSize = 0);
   ~MQTTClientESP32();
@@ -38,3 +48,5 @@ private:
   uint16_t _mqttPort;
   String _clientId;
 };
+
+#endif
