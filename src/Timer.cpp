@@ -74,7 +74,8 @@ void Timer::startTimer(void)
  */
 void Timer::stopTimer(void)
 {
-  stopTime = millis();
+  if (stopTime == 0)
+    stopTime = millis();
 }
 
 /**
