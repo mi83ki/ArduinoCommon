@@ -25,11 +25,14 @@ MQTTClientESP32::MQTTClientESP32(String mqttHost, uint16_t mqttPort, uint16_t bu
   , _mqttPort(mqttPort)
   , _lastReconnectAttempt(0)
   , _wifiClient(WiFiClient())
-  , _mqttClient(_wifiClient)
+  , _mqttClient(PubSubClient(_wifiClient))
+  , _messageCallbacks()
+  , _subscribedTopics()
 {
-
-  logger.info("Start example of MQTTClientESP32 " + _mqttHost + ":" + String(_mqttPort));
+  logger.info("Initialize MQTTClientESP32 " + _mqttHost + ":" + String(_mqttPort));
   _mqttClient.setServer(_mqttHost.c_str(), _mqttPort);
+  _mqttClient.setCallback([this](char* topic, byte* payload, unsigned int length)
+                          { this->onMessage(topic, payload, length); });
   if (bufferSize > 0)
   {
     _mqttClient.setBufferSize(bufferSize);
@@ -53,12 +56,14 @@ bool MQTTClientESP32::reconnect()
   logger.info("MQTTClientESP32.reconnect(): start");
   if (_mqttClient.connect(_clientId.c_str()))
   {
-    // // Once connected, publish an announcement...
-    // _mqttClient.publish("outTopic","hello world");
-    // // ... and resubscribe
-    // _mqttClient.subscribe("inTopic");
+    // 接続成功後、保存されているトピックを再度subscribeする
+    for (const auto& topic : _subscribedTopics)
+    {
+      subscribe(topic);
+    }
+    return true;
   }
-  return _mqttClient.connected();
+  return false;
 }
 
 /**
@@ -106,7 +111,7 @@ bool MQTTClientESP32::publish(String topic, String payload)
   return publish(topic, payload.c_str(), payload.length());
 }
 
-bool MQTTClientESP32::publish(String topic, const char *payload, int plength)
+bool MQTTClientESP32::publish(String topic, const char* payload, int plength)
 {
   uint16_t mqttBufSize = _mqttClient.getBufferSize();
   uint16_t dataSize = MQTT_MAX_HEADER_SIZE + 2 + topic.length() + plength;
@@ -131,7 +136,45 @@ bool MQTTClientESP32::publish(String topic, const char *payload, int plength)
  */
 bool MQTTClientESP32::subscribe(String topic)
 {
-  return _mqttClient.subscribe(topic.c_str());
+  logger.debug("MQTTClientESP32.subscribe(): topic: " + topic);
+  bool result = _mqttClient.subscribe(topic.c_str());
+  // 既に登録されているトピックは重複して追加しない
+  if (std::find(_subscribedTopics.begin(), _subscribedTopics.end(), topic) == _subscribedTopics.end())
+  {
+    _subscribedTopics.push_back(topic);
+    logger.info("MQTTClientESP32.subscribe(): Added topic to list: " + topic);
+  }
+  return result;
+}
+
+/**
+ * @brief コールバック関数を登録する
+ *
+ * @param callback トピックとペイロードを引数とするコールバック関数
+ */
+void MQTTClientESP32::registOnMessageCallback(MessageCallback callback)
+{
+  _messageCallbacks.push_back(callback);
+}
+
+/**
+ * @brief メッセージ受信時のコールバック関数
+ *
+ * @param topic トピック名
+ * @param payload ペイロード
+ * @param length ペイロード長
+ */
+void MQTTClientESP32::onMessage(char* topic, byte* payload, unsigned int length)
+{
+  String topicStr = String(topic);
+  String payloadStr = String((char*)payload, length);
+  // logger.debug("MQTTClientESP32.onMessage(): topic: " + topicStr + ", payload: " + payloadStr);
+
+  // 登録されたすべてのコールバック関数を呼び出す
+  for (auto& callback : _messageCallbacks)
+  {
+    callback(topicStr, payloadStr);
+  }
 }
 
 #endif

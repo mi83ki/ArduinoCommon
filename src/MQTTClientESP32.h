@@ -10,8 +10,9 @@
 #pragma once
 
 #include <Arduino.h>
-
 #include <WiFi.h>
+#include <vector>
+#include <functional>
 
 #if __has_include(<PubSubClient.h>)
 #include <PubSubClient.h>
@@ -29,6 +30,9 @@
 class MQTTClientESP32
 {
 public:
+  // コールバック関数の型定義
+  using MessageCallback = std::function<void(String topic, String payload)>;
+
   MQTTClientESP32(String, uint16_t, uint16_t bufferSize = 0);
   ~MQTTClientESP32();
   PubSubClient *getMQTTClient(void) { return &_mqttClient; };
@@ -37,6 +41,10 @@ public:
   bool publish(String topic, const char *payload, int plength);
   bool subscribe(String topic);
   String getClientId(void) { return _clientId; };
+  void onMessage(char *topic, byte *payload, unsigned int length);
+  
+  // コールバック関数を登録する関数
+  void registOnMessageCallback(MessageCallback callback);
 
 private:
   bool reconnect(void);
@@ -47,6 +55,12 @@ private:
   String _mqttHost;
   uint16_t _mqttPort;
   String _clientId;
+  
+  // コールバック関数のリスト
+  std::vector<MessageCallback> _messageCallbacks;
+  
+  // subscribeしたトピックのリスト
+  std::vector<String> _subscribedTopics;
 };
 
 #endif
