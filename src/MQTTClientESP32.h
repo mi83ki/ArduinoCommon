@@ -37,8 +37,8 @@ public:
   ~MQTTClientESP32();
   PubSubClient *getMQTTClient(void) { return &_mqttClient; };
   bool healthCheck(void);
-  bool publish(String topic, String payload);
-  bool publish(String topic, const char *payload, int plength);
+  bool publish(String topic, String payload, bool retained = false);
+  bool publish(String topic, const char *payload, int plength, bool retained = false);
   bool subscribe(String topic);
   String getClientId(void) { return _clientId; };
   void onMessage(char *topic, byte *payload, unsigned int length);

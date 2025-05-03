@@ -106,12 +106,12 @@ bool MQTTClientESP32::healthCheck(void)
  * @return true
  * @return false
  */
-bool MQTTClientESP32::publish(String topic, String payload)
+bool MQTTClientESP32::publish(String topic, String payload, bool retained)
 {
-  return publish(topic, payload.c_str(), payload.length());
+  return publish(topic, payload.c_str(), payload.length(), retained);
 }
 
-bool MQTTClientESP32::publish(String topic, const char* payload, int plength)
+bool MQTTClientESP32::publish(String topic, const char* payload, int plength, bool retained)
 {
   uint16_t mqttBufSize = _mqttClient.getBufferSize();
   uint16_t dataSize = MQTT_MAX_HEADER_SIZE + 2 + topic.length() + plength;
@@ -119,12 +119,13 @@ bool MQTTClientESP32::publish(String topic, const char* payload, int plength)
   {
     // メッセージサイズがオーバーしているとき
     logger.warn("MQTT message too long. bufSize: " + String(mqttBufSize) + ", dataSize: " + String(dataSize));
-    _mqttClient.beginPublish(topic.c_str(), plength, false);
+    _mqttClient.beginPublish(topic.c_str(), plength, retained);
     _mqttClient.print(payload);
     _mqttClient.endPublish();
     return true;
   }
-  return _mqttClient.publish(topic.c_str(), payload, plength);
+  return _mqttClient.publish(topic.c_str(), reinterpret_cast<const uint8_t*>(payload),
+                             static_cast<unsigned int>(plength), retained);
 }
 
 /**
