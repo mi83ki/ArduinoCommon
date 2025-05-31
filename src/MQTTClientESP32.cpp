@@ -53,7 +53,8 @@ MQTTClientESP32::~MQTTClientESP32() {}
 
 bool MQTTClientESP32::reconnect()
 {
-  logger.info("MQTTClientESP32.reconnect(): start");
+  logger.info("MQTTClientESP32.reconnect(): start, mqttHost: " + _mqttHost + ", mqttPort: " + String(_mqttPort) +
+              ", clientId: " + _clientId);
   if (_mqttClient.connect(_clientId.c_str()))
   {
     // 接続成功後、保存されているトピックを再度subscribeする
