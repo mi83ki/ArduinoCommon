@@ -48,7 +48,7 @@ void sleepSeconds(uint64_t sleepTimeSeconds) {
   timerCount++;
   logger.info("timer_cont = " + String(timerCount));
   uint64_t sleepTimeUs = sleepTimeSeconds * S_TO_US;
-  logger.info("sleepTimeUs = " + String(sleepTimeUs));
+  logger.info("############## Go to sleep. sleepTimeUs = " + String(sleepTimeUs));
   esp_sleep_enable_timer_wakeup(sleepTimeUs);
   esp_deep_sleep_start();
 }
