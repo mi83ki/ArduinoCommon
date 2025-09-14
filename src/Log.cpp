@@ -18,15 +18,33 @@
 
 Log::Log()
 {
-#ifdef USE_M5ATOM_S3
-  USBSerial.begin(115200);
-#else
-  Serial.begin(115200);
-#endif
+  serialBegin(LOG_SERIAL_BAUDRATE);
   m_level = LOG_LEVEL_INIT;
 }
 
 Log::~Log()
+{
+  serialEnd();
+}
+
+/**
+ * @brief シリアル通信を開始する
+ * 
+ */
+void Log::serialBegin(uint32_t baudrate)
+{
+#ifdef USE_M5ATOM_S3
+  USBSerial.begin(baudrate);
+#else
+  Serial.begin(baudrate);
+#endif
+}
+
+/**
+ * @brief シリアル通信を終了する
+ * 
+ */
+void Log::serialEnd(void)
 {
 #ifdef USE_M5ATOM_S3
   USBSerial.end();
@@ -99,6 +117,17 @@ void Log::warn(String msg)
 void Log::error(String msg)
 {
   log(ERROR, msg);
+}
+
+/**
+ * @brief ボーレートを変更する
+ * 
+ * @param baudrate 
+ */
+void Log::changeBaudrate(uint32_t baudrate)
+{
+  serialEnd();
+  serialBegin(baudrate);
 }
 
 Log logger = Log();

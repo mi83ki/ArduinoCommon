@@ -11,28 +11,26 @@
 #pragma once
 
 #include <Arduino.h>
+
 #include "Timer.h"
 
 /***********************************************************************/
 /*                           ログ出力クラス                            */
 /***********************************************************************/
-#define LOG_LEVEL_INIT (Log::ALL) // 出力ログレベルの初期値
+#define LOG_LEVEL_INIT (Log::ALL)  // 出力ログレベルの初期値
+#ifndef LOG_SERIAL_BAUDRATE
+// ログ出力のボーレート(デフォルトは115200)
+#define LOG_SERIAL_BAUDRATE (115200)
+#endif
 
-class Log
-{
-public:
+class Log {
+ public:
   // ログレベルの列挙型
-  typedef enum elog
-  {
-    ALL,
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR,
-    NONE
-  } logLevelEnum;
+  typedef enum elog { ALL, DEBUG, INFO, WARN, ERROR, NONE } logLevelEnum;
   Log();
   ~Log();
+  void serialBegin(uint32_t baudrate);
+  void serialEnd(void);
   logLevelEnum getLevel(void);
   void setLevel(logLevelEnum level);
   void log(logLevelEnum type, String msg);
@@ -40,8 +38,9 @@ public:
   void debug(String msg);
   void warn(String msg);
   void error(String msg);
+  void changeBaudrate(uint32_t baudrate);
 
-private:
+ private:
   logLevelEnum m_level;
 };
 
