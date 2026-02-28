@@ -20,7 +20,7 @@
  * @param mqttPort MQTTブローカーのポート番号
  * @param bufferSize MQTTバッファ―サイズ
  */
-MQTTClientESP32::MQTTClientESP32(String mqttHost, uint16_t mqttPort, uint16_t bufferSize)
+MQTTClientESP32::MQTTClientESP32(String mqttHost, uint16_t mqttPort, uint16_t bufferSize, String clientIdPrefix)
   : _mqttHost(mqttHost)
   , _mqttPort(mqttPort)
   , _lastReconnectAttempt(0)
@@ -41,7 +41,7 @@ MQTTClientESP32::MQTTClientESP32(String mqttHost, uint16_t mqttPort, uint16_t bu
 
   // ランダム関数の初期化
   randomSeed(micros());
-  _clientId = "m5timercamera-" + String(random(0xffff), HEX);
+  _clientId = clientIdPrefix + String(random(0xffff), HEX);
   logger.info("MQTTClientESP32.clientId: " + _clientId);
 }
 

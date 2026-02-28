@@ -33,7 +33,7 @@ public:
   // コールバック関数の型定義
   using MessageCallback = std::function<void(String topic, String payload)>;
 
-  MQTTClientESP32(String, uint16_t, uint16_t bufferSize = 0);
+  MQTTClientESP32(String, uint16_t, uint16_t bufferSize = 0, String clientIdPrefix = "arduino-");
   ~MQTTClientESP32();
   PubSubClient *getMQTTClient(void) { return &_mqttClient; };
   bool healthCheck(void);
