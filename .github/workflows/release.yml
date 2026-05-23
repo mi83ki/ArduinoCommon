@@ -1,0 +1,42 @@
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  create-release:
+    if: success() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version for tag name
+        id: get_version
+        run: |
+          VERSION=$(sed -n 's/^version=\(.*\)/\1/p' library.properties)
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Create a tag
+        id: create_git_tag
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git tag v${{ steps.get_version.outputs.version }}
+
+      - name: Push a tag
+        if: steps.create_git_tag.outcome == 'success'
+        run: |
+          git push origin v${{ steps.get_version.outputs.version }}
+
+      - name: Create GitHub Release
+        if: steps.create_git_tag.outcome == 'success'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
