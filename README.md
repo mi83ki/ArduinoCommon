@@ -1,92 +1,164 @@
 # ArduinoCommon
 
-Arduino common libraries
+Arduino 向けの共通ライブラリ集です。  
+ESP32 を中心に、複数プロジェクトで再利用する部品をまとめています。
 
 ---
 
-## Timer
+## 含まれるライブラリ
 
-例えばメインループで特定の周期で実行したい処理がある場合に使用する。
+### Timer
 
-[Timer使用例](examples/Timer/Timer.ino)
+一定周期の判定や経過時間の計測を行うユーティリティです。
+
+- 周期実行判定
+- 開始からの経過時間取得
+- グローバル時刻取得
+
+使用例: `examples/Timer/Timer.ino`
+
+### ServoESP32
+
+ESP32 の LEDC を使って RC サーボを制御します。
+
+- 角度指定
+- 角速度を考慮した追従制御
+
+使用例: `examples/ServoESP32/ServoESP32.ino`
+
+### WiFiESP32
+
+ESP32 の Wi-Fi 接続を扱う補助クラスです。接続や状態確認を簡潔に扱えます。
+
+使用例: `examples/WiFiESP32/WiFiESP32.ino`
+
+### EEPROMStore
+
+構造体データを EEPROM に保存・復元するためのテンプレートクラスです。
+
+- デフォルト値からの初期化
+- CRC16 による破損検出
+- 更新時のみ書き込み
+- 複数ストアの連結利用
+
+使用例: `examples/EEPROMStore/BasicUsage/BasicUsage.ino`
 
 ---
 
-## ServoESP32
+## 音と振動の出力
 
-ESP32マイコンでRCサーボモータを駆動するときに使用する。
+### TimedPatternPlayer
 
-- -90°～90°の角度を指定可能
-- 回転角速度[°/s]を指定可能
+時間付きの出力シーケンスをノンブロッキングで再生する共通基底クラスです。  
+`Buzzer` と `Vibrator` はこのクラスを利用しており、どちらも `update()` を周期的に呼ぶだけで再生できます。
 
-[ServoESP32使用例](examples/ServoESP32/ServoESP32.ino)
+### Buzzer
 
----
+MIDI ノート番号ベースでブザーを制御します。
 
-## WiFiESP32
-
-ESP32マイコンでWiFiを使用するライブラリ。再接続処理などを実装。
-
-[WiFiESP32使用例](examples/WiFiESP32/WiFiESP32.ino)
-
----
-
-## EEPROMStore
-
-任意の構造体をEEPROMに安全に読み書きするArduinoライブラリ。
-
-### 特徴
-
-- **テンプレート対応** — 任意の構造体をそのまま保存・読み込み
-- **CRC16整合性チェック** — データ破損を検知し、デフォルト値で自動復旧
-- **マジックナンバー** — 未初期化EEPROMとの区別、複数ストアの識別
-- **差分書き込み** — AVRでは `EEPROM.put()` 内部の `update()` によりバイト単位で差分書き込み
-- **マルチプラットフォーム** — AVR / ESP32 / ESP8266 対応
-
-### 基本的な使い方
+- 単音再生: `playTone()`
+- 停止: `mute()`
+- メロディ再生: `playMelody()`
+- 再生更新: `update()`
 
 ```cpp
-#include <EEPROMStore.h>
+#include <Buzzer.h>
 
-struct Config {
-    int   interval;
-    float threshold;
-    char  name[16];
+Buzzer buzzer;
+
+const Buzzer::Note melody[] = {
+    {72, 100},
+    {Buzzer::REST, 50},
+    {76, 100},
 };
 
-Config defaults = { 1000, 25.5f, "sensor01" };
-EEPROMStore<Config> store(0, defaults);
-
 void setup() {
-    store.begin();              // 読み込み（初回はデフォルトで初期化）
-    store.data.threshold = 30;  // 値を変更
-    store.save();               // 変更があれば書き込み
+  buzzer.begin();
+  buzzer.playMelody(melody);
+}
+
+void loop() {
+  buzzer.update();
 }
 ```
 
-### API
+使用例: `examples/Buzzer/Buzzer.ino`
 
-| メソッド | 説明 |
-| --- | --- |
-| `EEPROMStore<T>(address, defaults, magic)` | コンストラクタ。`magic` は省略可（デフォルト `0xBEEF`） |
-| `bool begin()` | 読み込み。失敗時はデフォルトで初期化。戻り値: 既存データの有無 |
-| `bool save()` | CRC比較で変更時のみ書き込み。戻り値: 書き込みの有無 |
-| `void forceSave()` | 比較なしで強制書き込み |
-| `void reset()` | デフォルト値に戻して書き込み |
-| `static uint16_t requiredSize()` | ストアが使用するバイト数 |
-| `uint16_t nextAddress()` | 次のストアの開始アドレス |
-| `T data` | 読み書き対象の構造体（直接アクセス） |
+### Vibrator
 
-### 複数ストアの配置
+出力強度[%] と再生時間[ms] の組み合わせで振動を制御します。
+
+- 全開出力: `on()`
+- 強度指定: `setPower()`
+- 停止: `off()`
+- パターン再生: `playPattern()`
+- 再生更新: `update()`
 
 ```cpp
-EEPROMStore<SensorConfig>  sensor(0, sensorDefaults, 0xAA01);
-EEPROMStore<NetworkConfig> network(sensor.nextAddress(), networkDefaults, 0xAA02);
+#include <Vibrator.h>
+
+Vibrator vibrator(12, 3);
+
+const Vibrator::PowerStep pattern[] = {
+    {100, 80},
+    {0, 40},
+    {60, 160},
+};
+
+void setup() {
+  vibrator.begin();
+  vibrator.playPattern(pattern);
+}
+
+void loop() {
+  vibrator.update();
+}
 ```
 
-### 対応アーキテクチャ
+使用例: `examples/Vibrator/Vibrator.ino`
 
-AVR, ESP32, ESP8266, その他 EEPROM.h 互換ボード
+### Speaker
+
+`Speaker` は `Buzzer` を継承し、トーン再生に加えて DAC を使った WAV 再生にも対応します。
+
+- ブザー互換のメロディ再生
+- 音量設定: `setVolume()`
+- WAV 再生予約: `requestWav()`
+- WAV 再生更新: `updateWav()`
+
+```cpp
+#include <Speaker.h>
+
+Speaker speaker(80);
+
+const Buzzer::Note melody[] = {
+    {72, 100},
+    {76, 100},
+    {79, 200},
+};
+
+void setup() {
+  speaker.begin();
+  speaker.playMelody(melody);
+}
+
+void loop() {
+  speaker.updateWav();
+  speaker.update();
+}
+```
+
+使用例: `examples/Speaker/Speaker.ino`
+
+---
+
+## 対応環境
+
+- AVR
+- ESP32
+- ESP8266
+
+ライブラリごとに利用できる機能は異なります。`Buzzer` / `Vibrator` / `Speaker` は ESP32 向け実装です。
 
 ---
 
