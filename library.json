@@ -1,6 +1,6 @@
 {
   "name": "Arduino Common Library",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "build": {
     "srcFilter": [
       "+<Log.cpp>",
