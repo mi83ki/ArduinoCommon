@@ -1,0 +1,23 @@
+{
+  "name": "Arduino Common Library",
+  "version": "0.5.1",
+  "build": {
+    "srcFilter": [
+      "+<Log.cpp>",
+      "+<MQTTClientESP32.cpp>",
+      "+<MacUtils.cpp>",
+      "+<Menu.cpp>",
+      "+<SleepHandler.cpp>",
+      "+<Timer.cpp>",
+      "+<WiFiESP32.cpp>"
+    ]
+  },
+  "dependencies": [
+    {
+      "name": "EEPROM"
+    },
+    {
+      "name": "PubSubClient"
+    }
+  ]
+}
