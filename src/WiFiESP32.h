@@ -31,6 +31,8 @@ class WiFiESP32 {
  public:
   WiFiESP32(const char *, const char *);
   ~WiFiESP32();
+  WiFiESP32(const WiFiESP32 &) = delete;
+  WiFiESP32 &operator=(const WiFiESP32 &) = delete;
   bool addAP(const char *, const char *);
   bool setStaticIp(const char *, const char *, const char *);
   bool begin(void);
