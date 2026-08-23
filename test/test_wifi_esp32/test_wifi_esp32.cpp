@@ -275,6 +275,21 @@ void test_static_ip_rejects_invalid_address_strings(void) {
 }
 
 /**
+ * @brief nullの固定IP設定を解析処理へ渡さず拒否することを検証する。
+ */
+void test_static_ip_rejects_null_before_parsing(void) {
+  WiFiESP32 wifi("primary", "primary-password");
+
+  TEST_ASSERT_FALSE(
+      wifi.setStaticIp(nullptr, "192.168.1.1", "255.255.255.0"));
+  TEST_ASSERT_FALSE(
+      wifi.setStaticIp("192.168.1.50", nullptr, "255.255.255.0"));
+  TEST_ASSERT_FALSE(
+      wifi.setStaticIp("192.168.1.50", "192.168.1.1", nullptr));
+  TEST_ASSERT_EQUAL_UINT32(0, FakeWiFiState::nullAddressParseCalls);
+}
+
+/**
  * @brief 接続失敗から10秒未満はhealthCheckが再接続しないことを検証する。
  */
 void test_health_check_backs_off_for_ten_seconds_after_failure(void) {
@@ -352,6 +367,7 @@ int main(int, char**) {
   RUN_TEST(test_all_candidates_failure_returns_false);
   RUN_TEST(test_static_ip_is_applied_to_primary_connection);
   RUN_TEST(test_static_ip_rejects_invalid_address_strings);
+  RUN_TEST(test_static_ip_rejects_null_before_parsing);
   RUN_TEST(test_health_check_backs_off_for_ten_seconds_after_failure);
   RUN_TEST(test_health_check_retries_after_ten_seconds);
   RUN_TEST(test_health_check_returns_immediately_when_connected);

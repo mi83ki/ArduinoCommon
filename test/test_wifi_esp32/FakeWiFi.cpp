@@ -27,6 +27,7 @@ uint32_t modeCalls = 0;
 uint32_t disconnectCalls = 0;
 uint32_t waitCalls = 0;
 uint32_t multiRunCalls = 0;
+uint32_t nullAddressParseCalls = 0;
 esp_reset_reason_t resetReason = ESP_RST_POWERON;
 
 void reset() {
@@ -38,6 +39,7 @@ void reset() {
   disconnectCalls = 0;
   waitCalls = 0;
   multiRunCalls = 0;
+  nullAddressParseCalls = 0;
   resetReason = ESP_RST_POWERON;
   directResults.clear();
   configuredMultiResult =
@@ -89,7 +91,10 @@ IPAddress::IPAddress(uint8_t first, uint8_t second, uint8_t third,
     : _bytes{{first, second, third, fourth}} {}
 
 bool IPAddress::fromString(const char* value) {
-  if (value == nullptr) return false;
+  if (value == nullptr) {
+    ++FakeWiFiState::nullAddressParseCalls;
+    return false;
+  }
   unsigned int bytes[4];
   char trailing;
   if (std::sscanf(value, "%u.%u.%u.%u%c", &bytes[0], &bytes[1], &bytes[2],

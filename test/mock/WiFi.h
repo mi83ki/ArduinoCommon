@@ -71,6 +71,7 @@ extern uint32_t modeCalls;
 extern uint32_t disconnectCalls;
 extern uint32_t waitCalls;
 extern uint32_t multiRunCalls;
+extern uint32_t nullAddressParseCalls;
 extern esp_reset_reason_t resetReason;
 
 void reset();
