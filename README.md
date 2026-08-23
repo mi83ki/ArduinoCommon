@@ -26,7 +26,35 @@ ESP32 の LEDC を使って RC サーボを制御します。
 
 ### WiFiESP32
 
-ESP32 の Wi-Fi 接続を扱う補助クラスです。接続や状態確認を簡潔に扱えます。
+ESP32のWi-Fi接続を管理する補助クラスです。通常接続先へ直接接続し、失敗時はESP32標準の`WiFiMulti`でフォールバック候補を選択します。
+
+```cpp
+#include <WiFiESP32.h>
+
+WiFiESP32 wifi("primary-ssid", "primary-password");
+
+void setup() {
+  wifi.addAP("fallback-ssid-1", "fallback-password-1");
+  wifi.addAP("fallback-ssid-2", "fallback-password-2");
+
+  // 固定IPは通常接続先だけに適用される。
+  wifi.setStaticIp("192.168.1.50", "192.168.1.1", "255.255.255.0");
+  wifi.begin();
+}
+
+void loop() {
+  wifi.healthCheck();
+  delay(1000);
+}
+```
+
+- `addAP()`でWiFiMultiのフォールバック候補を追加します。空SSID、重複SSID、32文字以上のSSID、64文字を超えるパスワードは拒否します。
+- WiFiMultiはスキャン結果のRSSIを基に接続先を選択します。候補の登録順は優先順位ではありません。
+- `setStaticIp()`は通常接続先だけに固定IPを適用します。フォールバック候補ではDHCPを使用します。
+- deep sleep復帰時は前回成功したSSID、BSSID、チャンネルをRTCメモリから使い、2秒の高速接続を先に試します。パスワードはRTCメモリへ保存しません。
+- 高速接続、通常接続、WiFiMultiの順で接続を試し、すべて失敗すると`begin()`は`false`を返します。
+- `healthCheck()`は切断を検出すると再接続し、失敗後は10秒間バックオフします。
+- 接続結果のログにはSSID、IP、RSSI、所要時間を出力しますが、パスワードは出力しません。
 
 使用例: `examples/WiFiESP32/WiFiESP32.ino`
 
