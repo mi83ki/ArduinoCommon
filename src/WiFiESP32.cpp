@@ -9,6 +9,7 @@
 
 #include <esp_system.h>
 
+#include <algorithm>
 #include <cstring>
 
 namespace {
@@ -51,13 +52,10 @@ void invalidateLastSuccessfulAccessPoint() {
  */
 WiFiESP32::WiFiESP32(const char *SSID, const char *PASS)
     : _credentials{{String(SSID == nullptr ? "" : SSID),
-                    String(PASS == nullptr ? "" : PASS), true}},
-      _staticIp(),
-      _gateway(),
-      _subnet(),
+                    String(PASS == nullptr ? "" : PASS), true, false,
+                    IPAddress(), IPAddress(), IPAddress()}},
       _clientIp(),
       _lastFailedAttemptMs(0),
-      _staticIpEnabled(false),
       _hasFailedAttempt(false) {}
 
 /**
@@ -77,6 +75,60 @@ WiFiESP32::~WiFiESP32() {}
  * @return false 入力不正、重複、またはWiFiMultiへの登録失敗
  */
 bool WiFiESP32::addAP(const char *SSID, const char *PASS) {
+  return addCredential(SSID, PASS, false, IPAddress(), IPAddress(),
+                       IPAddress());
+}
+
+/**
+ * @brief 固定IP設定を持つフォールバックアクセスポイントを追加する。
+ *
+ * @param SSID WiFiのSSID
+ * @param PASS WiFiのパスワード
+ * @param ipAddress 固定IPアドレス
+ * @param gateway ゲートウェイアドレス
+ * @param subnet サブネットマスク
+ * @return true 登録成功
+ * @return false 認証情報またはネットワーク設定が不正、重複、登録失敗
+ */
+bool WiFiESP32::addAP(const char *SSID, const char *PASS,
+                      const char *ipAddress, const char *gateway,
+                      const char *subnet) {
+  if (ipAddress == nullptr || gateway == nullptr || subnet == nullptr) {
+    logger.error("WiFiESP32::addAP(): Network address is null.");
+    return false;
+  }
+
+  IPAddress parsedIp;
+  IPAddress parsedGateway;
+  IPAddress parsedSubnet;
+  if (!parsedIp.fromString(ipAddress) ||
+      !parsedGateway.fromString(gateway) ||
+      !parsedSubnet.fromString(subnet)) {
+    logger.error("WiFiESP32::addAP(): Invalid network address.");
+    return false;
+  }
+
+  return addCredential(SSID, PASS, true, parsedIp, parsedGateway,
+                       parsedSubnet);
+}
+
+/**
+ * @brief 検証済みネットワーク設定と認証情報を登録する。
+ *
+ * @param SSID WiFiのSSID
+ * @param PASS WiFiのパスワード
+ * @param staticIpEnabled 固定IPを使用する場合はtrue
+ * @param staticIp 固定IPアドレス
+ * @param gateway ゲートウェイアドレス
+ * @param subnet サブネットマスク
+ * @return true 登録成功
+ * @return false 認証情報が不正、重複、またはWiFiMultiへの登録失敗
+ */
+bool WiFiESP32::addCredential(const char *SSID, const char *PASS,
+                              bool staticIpEnabled,
+                              const IPAddress &staticIp,
+                              const IPAddress &gateway,
+                              const IPAddress &subnet) {
   if (SSID == nullptr || SSID[0] == '\0' || std::strlen(SSID) > 31) {
     logger.error("WiFiESP32::addAP(): Invalid SSID.");
     return false;
@@ -99,7 +151,8 @@ bool WiFiESP32::addAP(const char *SSID, const char *PASS) {
   }
 
   _credentials.push_back(
-      {String(SSID), String(PASS == nullptr ? "" : PASS), false});
+      {String(SSID), String(PASS == nullptr ? "" : PASS), false,
+       staticIpEnabled, staticIp, gateway, subnet});
   return true;
 }
 
@@ -131,10 +184,11 @@ bool WiFiESP32::setStaticIp(const char *ipAddress, const char *gateway,
     return false;
   }
 
-  _staticIp = parsedIp;
-  _gateway = parsedGateway;
-  _subnet = parsedSubnet;
-  _staticIpEnabled = true;
+  WiFiCredential &primary = _credentials.front();
+  primary.staticIp = parsedIp;
+  primary.gateway = parsedGateway;
+  primary.subnet = parsedSubnet;
+  primary.staticIpEnabled = true;
   return true;
 }
 
@@ -267,6 +321,8 @@ bool WiFiESP32::connectFallback(void) {
   if (_credentials.size() <= 1) return false;
 
   disconnectWiFi();
+  if (hasStaticFallback()) return connectFallbackFromScan();
+
   if (!enableDhcp()) {
     logger.error("WiFiESP32::connectFallback(): Failed to enable DHCP.");
     return false;
@@ -277,6 +333,81 @@ bool WiFiESP32::connectFallback(void) {
 }
 
 /**
+ * @brief スキャン結果から登録済みフォールバック候補へRSSI順に接続する。
+ *
+ * スキャンは1回だけ実行し、同一SSIDが複数見つかった場合は最もRSSIが強い
+ * BSSIDを使用する。各候補への接続前に、その候補固有のIP設定を適用する。
+ *
+ * @return true いずれかの候補への接続成功
+ * @return false スキャン失敗、候補なし、または全候補への接続失敗
+ */
+bool WiFiESP32::connectFallbackFromScan(void) {
+  logger.info("WiFiESP32::connectFallbackFromScan(): Scanning fallback "
+              "SSIDs.");
+  const int16_t networkCount = WiFi.scanNetworks();
+  if (networkCount <= 0) {
+    WiFi.scanDelete();
+    return false;
+  }
+
+  std::vector<ScannedAccessPoint> candidates;
+  for (int16_t index = 0; index < networkCount; ++index) {
+    String ssid;
+    uint8_t encryptionType = 0;
+    int32_t rssi = 0;
+    uint8_t *bssid = nullptr;
+    int32_t channel = 0;
+    if (!WiFi.getNetworkInfo(static_cast<uint8_t>(index), ssid,
+                             encryptionType, rssi, bssid, channel)) {
+      continue;
+    }
+
+    const WiFiCredential *credential = findCredential(ssid.c_str());
+    if (credential == nullptr || credential->primary ||
+        !hasValidBssid(bssid) || channel < kMinimumWiFiChannel ||
+        channel > kMaximumWiFiChannel) {
+      continue;
+    }
+
+    const auto existing = std::find_if(
+        candidates.begin(), candidates.end(),
+        [credential](const ScannedAccessPoint &candidate) {
+          return candidate.credential == credential;
+        });
+    if (existing != candidates.end() && existing->rssi >= rssi) continue;
+
+    ScannedAccessPoint accessPoint{
+        credential, rssi, {{0, 0, 0, 0, 0, 0}}, channel};
+    std::copy(bssid, bssid + accessPoint.bssid.size(),
+              accessPoint.bssid.begin());
+    if (existing == candidates.end()) {
+      candidates.push_back(accessPoint);
+    } else {
+      *existing = accessPoint;
+    }
+  }
+  WiFi.scanDelete();
+
+  std::sort(candidates.begin(), candidates.end(),
+            [](const ScannedAccessPoint &left,
+               const ScannedAccessPoint &right) {
+              return left.rssi > right.rssi;
+            });
+
+  for (const ScannedAccessPoint &candidate : candidates) {
+    if (!configureNetwork(*candidate.credential)) continue;
+    logger.info("WiFiESP32::connectFallbackFromScan(): Trying SSID: " +
+                candidate.credential->ssid);
+    if (connectWithCredential(*candidate.credential, WIFI_TRY_WAIT,
+                              candidate.channel, candidate.bssid.data())) {
+      return true;
+    }
+    disconnectWiFi();
+  }
+  return false;
+}
+
+/**
  * @brief 接続候補の種別に応じて固定IPまたはDHCPを設定する。
  *
  * @param credential 接続対象の認証情報
@@ -284,8 +415,9 @@ bool WiFiESP32::connectFallback(void) {
  * @return false ネットワーク設定失敗
  */
 bool WiFiESP32::configureNetwork(const WiFiCredential &credential) {
-  if (credential.primary && _staticIpEnabled) {
-    return WiFi.config(_staticIp, _gateway, _subnet);
+  if (credential.staticIpEnabled) {
+    return WiFi.config(credential.staticIp, credential.gateway,
+                       credential.subnet);
   }
   return enableDhcp();
 }
@@ -299,6 +431,20 @@ bool WiFiESP32::configureNetwork(const WiFiCredential &credential) {
 bool WiFiESP32::enableDhcp(void) {
   const IPAddress dynamicAddress(INADDR_NONE);
   return WiFi.config(dynamicAddress, dynamicAddress, dynamicAddress);
+}
+
+/**
+ * @brief 固定IPを使用するフォールバック候補があるか判定する。
+ *
+ * @return true 固定IP候補あり
+ * @return false 全フォールバック候補がDHCP
+ */
+bool WiFiESP32::hasStaticFallback(void) const {
+  return std::any_of(
+      _credentials.begin(), _credentials.end(),
+      [](const WiFiCredential &credential) {
+        return !credential.primary && credential.staticIpEnabled;
+      });
 }
 
 /**
@@ -373,6 +519,15 @@ void WiFiESP32::disconnectWiFi(void) {
  */
 bool WiFiESP32::isConnected(void) {
   return WiFi.status() == WL_CONNECTED;
+}
+
+/**
+ * @brief 現在接続中のWiFi SSIDを取得する。
+ *
+ * @return String 接続中のSSID。未接続の場合は空文字列
+ */
+String WiFiESP32::getConnectedSsid(void) const {
+  return WiFi.status() == WL_CONNECTED ? WiFi.SSID() : String();
 }
 
 /**
