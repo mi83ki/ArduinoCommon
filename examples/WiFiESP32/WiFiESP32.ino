@@ -15,6 +15,9 @@ void setup() {
   delay(3000);
 
   wifi.addAP(FALLBACK_SSID, FALLBACK_PASS);
+  // 固定IP付き候補は次の形式で追加できる。
+  // wifi.addAP("fallback-static", "password", "192.168.2.50",
+  //            "192.168.2.1", "255.255.255.0");
   // wifi.setStaticIp("192.168.1.50", "192.168.1.1", "255.255.255.0");
   if (!wifi.begin()) {
     logger.error("Initial WiFi connection failed.");

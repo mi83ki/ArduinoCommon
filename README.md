@@ -26,7 +26,7 @@ ESP32 の LEDC を使って RC サーボを制御します。
 
 ### WiFiESP32
 
-ESP32のWi-Fi接続を管理する補助クラスです。通常接続先へ直接接続し、失敗時はESP32標準の`WiFiMulti`でフォールバック候補を選択します。
+ESP32のWi-Fi接続を管理する補助クラスです。通常接続先へ直接接続し、失敗時は登録済みフォールバック候補から接続先を選択します。
 
 ```cpp
 #include <WiFiESP32.h>
@@ -35,9 +35,10 @@ WiFiESP32 wifi("primary-ssid", "primary-password");
 
 void setup() {
   wifi.addAP("fallback-ssid-1", "fallback-password-1");
-  wifi.addAP("fallback-ssid-2", "fallback-password-2");
+  wifi.addAP("fallback-ssid-2", "fallback-password-2", "192.168.2.50",
+             "192.168.2.1", "255.255.255.0");
 
-  // 固定IPは通常接続先だけに適用される。
+  // 通常接続先の固定IP。
   wifi.setStaticIp("192.168.1.50", "192.168.1.1", "255.255.255.0");
   wifi.begin();
 }
@@ -48,15 +49,20 @@ void loop() {
 }
 ```
 
-- `addAP()`でWiFiMultiのフォールバック候補を追加します。空SSID、重複SSID、32文字以上のSSID、64文字を超えるパスワードは拒否します。
-- WiFiMultiはスキャン結果のRSSIを基に接続先を選択します。候補の登録順は優先順位ではありません。
-- `setStaticIp()`は通常接続先だけに固定IPを適用します。フォールバック候補ではDHCPを使用します。
+- 2引数の`addAP()`はDHCPを使うフォールバック候補を追加します。5引数版では候補固有の固定IP、ゲートウェイ、サブネットを指定できます。
+- 全フォールバック候補がDHCPならWiFiMultiを使用します。固定IP候補が含まれる場合は1回のスキャン結果からRSSI順に直接接続します。候補の登録順は優先順位ではありません。
+- `setStaticIp()`は通常接続先へ固定IPを適用します。
 - deep sleep復帰時は前回成功したSSID、BSSID、チャンネルをRTCメモリから使い、2秒の高速接続を先に試します。パスワードはRTCメモリへ保存しません。
-- 高速接続、通常接続、WiFiMultiの順で接続を試し、すべて失敗すると`begin()`は`false`を返します。
+- 高速接続、通常接続、フォールバック接続の順で試し、すべて失敗すると`begin()`は`false`を返します。
 - `healthCheck()`は切断を検出すると再接続し、失敗後は10秒間バックオフします。
+- `getConnectedSsid()`で現在接続中のSSIDを取得できます。
 - 接続結果のログにはSSID、IP、RSSI、所要時間を出力しますが、パスワードは出力しません。
 
 使用例: `examples/WiFiESP32/WiFiESP32.ino`
+
+### MQTTClientESP32
+
+`setServer(host, port)`でMQTTブローカーを変更できます。接続先が変わった場合は現在の接続を切断し、次の`healthCheck()`で直ちに新しいブローカーへ再接続して、保存済みトピックを再購読します。同じ接続先の指定は何も行いません。
 
 ### TCPClientESP32
 
