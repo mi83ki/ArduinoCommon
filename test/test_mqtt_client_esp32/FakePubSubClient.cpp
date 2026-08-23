@@ -1,5 +1,7 @@
 #include "PubSubClient.h"
 
+uint32_t fakeMillis = 0;
+
 namespace FakePubSubClientState {
 
 std::vector<ServerCall> serverCalls;

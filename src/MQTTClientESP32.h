@@ -36,6 +36,7 @@ public:
   MQTTClientESP32(String, uint16_t, uint16_t bufferSize = 0, String clientIdPrefix = "arduino-");
   ~MQTTClientESP32();
   PubSubClient *getMQTTClient(void) { return &_mqttClient; };
+  bool setServer(String, uint16_t);
   bool healthCheck(void);
   bool publish(String topic, String payload, bool retained = false);
   bool publish(String topic, const char *payload, int plength, bool retained = false);
@@ -49,7 +50,8 @@ public:
 private:
   bool reconnect(void);
 
-  uint16_t _lastReconnectAttempt;
+  uint32_t _lastReconnectAttempt;
+  bool _reconnectImmediately;
   WiFiClient _wifiClient;
   PubSubClient _mqttClient;
   String _mqttHost;
