@@ -116,6 +116,11 @@ bool WiFiESP32::addAP(const char *SSID, const char *PASS) {
  */
 bool WiFiESP32::setStaticIp(const char *ipAddress, const char *gateway,
                             const char *subnet) {
+  if (ipAddress == nullptr || gateway == nullptr || subnet == nullptr) {
+    logger.error("WiFiESP32::setStaticIp(): Network address is null.");
+    return false;
+  }
+
   IPAddress parsedIp;
   IPAddress parsedGateway;
   IPAddress parsedSubnet;
