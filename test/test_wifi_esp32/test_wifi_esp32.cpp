@@ -53,6 +53,29 @@ void test_add_ap_registers_valid_fallback(void) {
 }
 
 /**
+ * @brief 固定IP付きフォールバック候補を登録できることを検証する。
+ */
+void test_add_ap_registers_static_network_profile(void) {
+  WiFiESP32 wifi("primary", "primary-password");
+
+  TEST_ASSERT_TRUE(wifi.addAP("fallback", "fallback-password",
+                              "192.168.2.50", "192.168.2.1",
+                              "255.255.255.0"));
+  TEST_ASSERT_EQUAL_UINT32(1, FakeWiFiState::addedAps.size());
+}
+
+/**
+ * @brief 固定IP付き候補の不正なネットワーク設定を拒否することを検証する。
+ */
+void test_add_ap_rejects_invalid_static_network_profile(void) {
+  WiFiESP32 wifi("primary", "primary-password");
+
+  TEST_ASSERT_FALSE(wifi.addAP("fallback", "fallback-password", "invalid",
+                               "192.168.2.1", "255.255.255.0"));
+  TEST_ASSERT_EQUAL_UINT32(0, FakeWiFiState::addedAps.size());
+}
+
+/**
  * @brief 空SSIDをフォールバック候補として拒否することを検証する。
  */
 void test_add_ap_rejects_empty_ssid(void) {
@@ -221,6 +244,110 @@ void test_primary_failure_enables_dhcp_and_runs_wifi_multi(void) {
 }
 
 /**
+ * @brief 固定IP候補を含む場合は一度だけスキャンしてRSSI順に接続することを検証する。
+ */
+void test_static_fallback_scans_once_and_tries_visible_profiles_by_rssi(void) {
+  FakeWiFiState::setDirectResult("primary", WL_CONNECT_FAILED);
+  FakeWiFiState::setDirectResult("strong-static", WL_CONNECT_FAILED);
+  FakeWiFiState::setDirectResult("weak-dhcp", WL_CONNECTED);
+  FakeWiFiState::addScanNetwork(
+      "weak-dhcp", -70, 1, {{0x11, 0x12, 0x13, 0x14, 0x15, 0x16}});
+  FakeWiFiState::addScanNetwork(
+      "unregistered", -20, 3, {{0x21, 0x22, 0x23, 0x24, 0x25, 0x26}});
+  FakeWiFiState::addScanNetwork(
+      "strong-static", -35, 6, {{0x31, 0x32, 0x33, 0x34, 0x35, 0x36}});
+  WiFiESP32 wifi("primary", "primary-password");
+  TEST_ASSERT_TRUE(wifi.addAP("weak-dhcp", "weak-password"));
+  TEST_ASSERT_TRUE(wifi.addAP("strong-static", "strong-password",
+                              "192.168.2.50", "192.168.2.1",
+                              "255.255.255.0"));
+
+  TEST_ASSERT_TRUE(wifi.begin());
+  TEST_ASSERT_EQUAL_UINT32(1, FakeWiFiState::scanCalls);
+  TEST_ASSERT_EQUAL_UINT32(1, FakeWiFiState::scanDeleteCalls);
+  TEST_ASSERT_EQUAL_UINT32(0, FakeWiFiState::multiRunCalls);
+  TEST_ASSERT_EQUAL_UINT32(3, FakeWiFiState::beginCalls.size());
+  TEST_ASSERT_EQUAL_STRING("strong-static",
+                           FakeWiFiState::beginCalls[1].ssid.c_str());
+  TEST_ASSERT_EQUAL_INT32(6, FakeWiFiState::beginCalls[1].channel);
+  TEST_ASSERT_TRUE(FakeWiFiState::beginCalls[1].hasBssid);
+  TEST_ASSERT_EQUAL_STRING("weak-dhcp",
+                           FakeWiFiState::beginCalls[2].ssid.c_str());
+  TEST_ASSERT_EQUAL_INT32(1, FakeWiFiState::beginCalls[2].channel);
+  TEST_ASSERT_TRUE(FakeWiFiState::beginCalls[2].hasBssid);
+
+  TEST_ASSERT_EQUAL_UINT32(3, FakeWiFiState::configCalls.size());
+  TEST_ASSERT_TRUE(FakeWiFiState::configCalls[1].ip ==
+                   IPAddress(192, 168, 2, 50));
+  TEST_ASSERT_TRUE(FakeWiFiState::configCalls[2].ip == IPAddress(0));
+}
+
+/**
+ * @brief 同一SSIDが複数見つかった場合は最強RSSIのBSSIDだけを試すことを検証する。
+ */
+void test_static_fallback_uses_strongest_bssid_for_duplicate_ssid(void) {
+  FakeWiFiState::setDirectResult("primary", WL_CONNECT_FAILED);
+  FakeWiFiState::setDirectResult("fallback", WL_CONNECTED);
+  FakeWiFiState::addScanNetwork(
+      "fallback", -80, 1, {{0x10, 0x10, 0x10, 0x10, 0x10, 0x10}});
+  FakeWiFiState::addScanNetwork(
+      "fallback", -40, 11, {{0x20, 0x20, 0x20, 0x20, 0x20, 0x20}});
+  WiFiESP32 wifi("primary", "primary-password");
+  TEST_ASSERT_TRUE(wifi.addAP("fallback", "fallback-password",
+                              "192.168.2.50", "192.168.2.1",
+                              "255.255.255.0"));
+
+  TEST_ASSERT_TRUE(wifi.begin());
+  TEST_ASSERT_EQUAL_UINT32(2, FakeWiFiState::beginCalls.size());
+  TEST_ASSERT_EQUAL_INT32(11, FakeWiFiState::beginCalls[1].channel);
+  TEST_ASSERT_EQUAL_UINT8(0x20, FakeWiFiState::beginCalls[1].bssid[0]);
+}
+
+/**
+ * @brief 固定IPフォールバック成功後のdeep sleep復帰で同じ固定IPを適用することを検証する。
+ */
+void test_deep_sleep_applies_static_network_for_last_fallback(void) {
+  FakeWiFiState::setDirectResult("primary", WL_CONNECT_FAILED);
+  FakeWiFiState::setDirectResult("fallback", WL_CONNECTED);
+  FakeWiFiState::addScanNetwork(
+      "fallback", -40, 6, {{0x30, 0x31, 0x32, 0x33, 0x34, 0x35}});
+  {
+    WiFiESP32 wifi("primary", "primary-password");
+    TEST_ASSERT_TRUE(wifi.addAP("fallback", "fallback-password",
+                                "192.168.3.50", "192.168.3.1",
+                                "255.255.255.0"));
+    TEST_ASSERT_TRUE(wifi.begin());
+  }
+
+  FakeWiFiState::reset();
+  FakeWiFiState::resetReason = ESP_RST_DEEPSLEEP;
+  FakeWiFiState::setDirectResult("fallback", WL_CONNECTED);
+  WiFiESP32 wifi("primary", "primary-password");
+  TEST_ASSERT_TRUE(wifi.addAP("fallback", "fallback-password",
+                              "192.168.3.50", "192.168.3.1",
+                              "255.255.255.0"));
+
+  TEST_ASSERT_TRUE(wifi.begin());
+  TEST_ASSERT_EQUAL_UINT32(1, FakeWiFiState::beginCalls.size());
+  TEST_ASSERT_EQUAL_STRING("fallback",
+                           FakeWiFiState::beginCalls[0].ssid.c_str());
+  TEST_ASSERT_TRUE(FakeWiFiState::configCalls[0].ip ==
+                   IPAddress(192, 168, 3, 50));
+  TEST_ASSERT_EQUAL_UINT32(0, FakeWiFiState::scanCalls);
+}
+
+/**
+ * @brief 接続後のSSIDを公開APIから取得できることを検証する。
+ */
+void test_get_connected_ssid_returns_current_wifi_ssid(void) {
+  FakeWiFiState::setDirectResult("primary", WL_CONNECTED);
+  WiFiESP32 wifi("primary", "primary-password");
+
+  TEST_ASSERT_TRUE(wifi.begin());
+  TEST_ASSERT_EQUAL_STRING("primary", wifi.getConnectedSsid().c_str());
+}
+
+/**
  * @brief フォールバック成功情報が次のdeep sleep復帰で使われることを検証する。
  */
 void test_fallback_success_is_saved_for_next_deep_sleep(void) {
@@ -363,6 +490,8 @@ int main(int, char**) {
   RUN_TEST(test_legacy_constructor_uses_primary_credentials);
   RUN_TEST(test_wifi_esp32_is_not_copyable);
   RUN_TEST(test_add_ap_registers_valid_fallback);
+  RUN_TEST(test_add_ap_registers_static_network_profile);
+  RUN_TEST(test_add_ap_rejects_invalid_static_network_profile);
   RUN_TEST(test_add_ap_rejects_empty_ssid);
   RUN_TEST(test_add_ap_rejects_32_character_ssid);
   RUN_TEST(test_add_ap_rejects_password_longer_than_64_characters);
@@ -373,6 +502,10 @@ int main(int, char**) {
   RUN_TEST(test_failed_fast_path_falls_back_to_primary);
   RUN_TEST(test_primary_success_skips_wifi_multi);
   RUN_TEST(test_primary_failure_enables_dhcp_and_runs_wifi_multi);
+  RUN_TEST(test_static_fallback_scans_once_and_tries_visible_profiles_by_rssi);
+  RUN_TEST(test_static_fallback_uses_strongest_bssid_for_duplicate_ssid);
+  RUN_TEST(test_deep_sleep_applies_static_network_for_last_fallback);
+  RUN_TEST(test_get_connected_ssid_returns_current_wifi_ssid);
   RUN_TEST(test_fallback_success_is_saved_for_next_deep_sleep);
   RUN_TEST(test_all_candidates_failure_returns_false);
   RUN_TEST(test_static_ip_is_applied_to_primary_connection);

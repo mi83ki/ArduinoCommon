@@ -15,6 +15,7 @@ namespace {
 std::map<std::string, FakeWiFiState::ConnectionResult> directResults;
 FakeWiFiState::ConnectionResult configuredMultiResult{
     WL_CONNECT_FAILED, 100, "", {{0, 0, 0, 0, 0, 0}}, 0, IPAddress(), -100};
+std::vector<FakeWiFiState::ScanNetwork> configuredScanNetworks;
 
 }  // namespace
 
@@ -27,6 +28,8 @@ uint32_t modeCalls = 0;
 uint32_t disconnectCalls = 0;
 uint32_t waitCalls = 0;
 uint32_t multiRunCalls = 0;
+uint32_t scanCalls = 0;
+uint32_t scanDeleteCalls = 0;
 uint32_t nullAddressParseCalls = 0;
 esp_reset_reason_t resetReason = ESP_RST_POWERON;
 
@@ -39,11 +42,14 @@ void reset() {
   disconnectCalls = 0;
   waitCalls = 0;
   multiRunCalls = 0;
+  scanCalls = 0;
+  scanDeleteCalls = 0;
   nullAddressParseCalls = 0;
   resetReason = ESP_RST_POWERON;
   directResults.clear();
   configuredMultiResult =
       {WL_CONNECT_FAILED, 100, "", {{0, 0, 0, 0, 0, 0}}, 0, IPAddress(), -100};
+  configuredScanNetworks.clear();
   WiFi = FakeWiFiClass();
 }
 
@@ -75,6 +81,12 @@ void applyMultiResult(uint32_t timeoutMs) {
 }
 
 const ConnectionResult& multiResult() { return configuredMultiResult; }
+
+void addScanNetwork(const char* ssid, int32_t rssi, int32_t channel,
+                    const std::array<uint8_t, 6>& bssid) {
+  configuredScanNetworks.push_back(
+      {ssid == nullptr ? "" : ssid, rssi, bssid, channel});
+}
 
 }  // namespace FakeWiFiState
 
@@ -173,6 +185,27 @@ bool FakeWiFiClass::disconnect(bool, bool) {
   _status = WL_DISCONNECTED;
   return true;
 }
+
+int16_t FakeWiFiClass::scanNetworks(bool, bool, bool, uint32_t, uint8_t,
+                                    const char*, const uint8_t*) {
+  ++FakeWiFiState::scanCalls;
+  return static_cast<int16_t>(configuredScanNetworks.size());
+}
+
+bool FakeWiFiClass::getNetworkInfo(uint8_t networkItem, String& ssid,
+                                   uint8_t& encryptionType, int32_t& rssi,
+                                   uint8_t*& bssid, int32_t& channel) {
+  if (networkItem >= configuredScanNetworks.size()) return false;
+  FakeWiFiState::ScanNetwork& network = configuredScanNetworks[networkItem];
+  ssid = String(network.ssid);
+  encryptionType = 0;
+  rssi = network.rssi;
+  bssid = network.bssid.data();
+  channel = network.channel;
+  return true;
+}
+
+void FakeWiFiClass::scanDelete() { ++FakeWiFiState::scanDeleteCalls; }
 
 wl_status_t FakeWiFiClass::status() const { return _status; }
 

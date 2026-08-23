@@ -64,6 +64,13 @@ struct ConnectionResult {
   int32_t rssi;
 };
 
+struct ScanNetwork {
+  std::string ssid;
+  int32_t rssi;
+  std::array<uint8_t, 6> bssid;
+  int32_t channel;
+};
+
 extern std::vector<BeginCall> beginCalls;
 extern std::vector<ConfigCall> configCalls;
 extern std::vector<std::pair<std::string, std::string>> addedAps;
@@ -71,6 +78,8 @@ extern uint32_t modeCalls;
 extern uint32_t disconnectCalls;
 extern uint32_t waitCalls;
 extern uint32_t multiRunCalls;
+extern uint32_t scanCalls;
+extern uint32_t scanDeleteCalls;
 extern uint32_t nullAddressParseCalls;
 extern esp_reset_reason_t resetReason;
 
@@ -83,6 +92,8 @@ void setMultiResult(wl_status_t status, const char* ssid = "",
                         {{0x10, 0x20, 0x30, 0x40, 0x50, 0x60}});
 void applyMultiResult(uint32_t timeoutMs);
 const ConnectionResult& multiResult();
+void addScanNetwork(const char* ssid, int32_t rssi, int32_t channel,
+                    const std::array<uint8_t, 6>& bssid);
 
 }  // namespace FakeWiFiState
 
@@ -96,6 +107,14 @@ class FakeWiFiClass {
   bool config(IPAddress ip, IPAddress gateway, IPAddress subnet,
               IPAddress dns1 = IPAddress(), IPAddress dns2 = IPAddress());
   bool disconnect(bool wifiOff = false, bool eraseAp = false);
+  int16_t scanNetworks(bool async = false, bool showHidden = false,
+                       bool passive = false, uint32_t maxMsPerChannel = 300,
+                       uint8_t channel = 0, const char* ssid = nullptr,
+                       const uint8_t* bssid = nullptr);
+  bool getNetworkInfo(uint8_t networkItem, String& ssid,
+                      uint8_t& encryptionType, int32_t& rssi, uint8_t*& bssid,
+                      int32_t& channel);
+  void scanDelete();
   wl_status_t status() const;
   String SSID() const;
   IPAddress localIP() const;
