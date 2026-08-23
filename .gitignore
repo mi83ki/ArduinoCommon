@@ -32,6 +32,9 @@
 *.out
 *.app
 
+# PlatformIO build output
+.pio/
+
 ### VisualStudioCode ###
 .vscode/*
 !.vscode/settings.json
