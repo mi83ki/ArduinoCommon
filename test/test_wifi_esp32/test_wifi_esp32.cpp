@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstring>
+#include <type_traits>
 
 #include "FakeLogState.h"
 #include "WiFi.h"
@@ -27,6 +28,14 @@ void test_legacy_constructor_uses_primary_credentials(void) {
                            FakeWiFiState::beginCalls[0].ssid.c_str());
   TEST_ASSERT_EQUAL_STRING("primary-password",
                            FakeWiFiState::beginCalls[0].password.c_str());
+}
+
+/**
+ * @brief WiFiMultiの所有データを浅くコピーしないようコピー禁止を検証する。
+ */
+void test_wifi_esp32_is_not_copyable(void) {
+  TEST_ASSERT_FALSE(std::is_copy_constructible<WiFiESP32>::value);
+  TEST_ASSERT_FALSE(std::is_copy_assignable<WiFiESP32>::value);
 }
 
 /**
@@ -352,6 +361,7 @@ void test_connection_logs_do_not_contain_passwords(void) {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_legacy_constructor_uses_primary_credentials);
+  RUN_TEST(test_wifi_esp32_is_not_copyable);
   RUN_TEST(test_add_ap_registers_valid_fallback);
   RUN_TEST(test_add_ap_rejects_empty_ssid);
   RUN_TEST(test_add_ap_rejects_32_character_ssid);
