@@ -22,6 +22,8 @@ typedef enum {
 static const uint8_t WIFI_STA = 1;
 static const uint32_t INADDR_NONE = 0;
 
+class WiFiClient {};
+
 class IPAddress {
  public:
   IPAddress();
