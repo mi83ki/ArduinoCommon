@@ -485,6 +485,72 @@ void test_connection_logs_do_not_contain_passwords(void) {
   }
 }
 
+/**
+ * @brief 直前の失敗で残ったステータスに影響されず次候補へ接続することを検証する。
+ *
+ * ESP32 Arduino Coreのステータスはイベントでしか更新されず、
+ * WL_NO_SSID_AVAILが残ったままになる。この値を接続失敗と誤判定すると
+ * フォールバック候補へ一度も接続できなくなる。
+ */
+void test_connect_succeeds_when_previous_attempt_left_stale_status(void) {
+  FakeWiFiState::setDirectResult("primary", WL_NO_SSID_AVAIL, 100);
+  FakeWiFiState::setDirectResult("fallback", WL_CONNECTED, 800);
+  FakeWiFiState::addScanNetwork(
+      "fallback", -40, 6, {{0x40, 0x41, 0x42, 0x43, 0x44, 0x45}});
+  WiFiESP32 wifi("primary", "primary-password");
+  TEST_ASSERT_TRUE(wifi.addAP("fallback", "fallback-password",
+                              "192.168.4.50", "192.168.4.1",
+                              "255.255.255.0"));
+
+  TEST_ASSERT_TRUE(wifi.begin());
+  TEST_ASSERT_EQUAL_STRING("fallback", wifi.getConnectedSsid().c_str());
+  TEST_ASSERT_EQUAL_UINT32(2, FakeWiFiState::beginCalls.size());
+  TEST_ASSERT_EQUAL_STRING("fallback",
+                           FakeWiFiState::beginCalls[1].ssid.c_str());
+}
+
+/**
+ * @brief 接続確立に時間がかかってもタイムアウト内なら成功と判定することを検証する。
+ */
+void test_connect_waits_until_connection_is_established(void) {
+  // WIFI_PRIMARY_CONNECT_WAIT(3000ms)内に確立するケース
+  FakeWiFiState::setDirectResult("primary", WL_CONNECTED, 2000);
+  WiFiESP32 wifi("primary", "primary-password");
+
+  TEST_ASSERT_TRUE(wifi.begin());
+  TEST_ASSERT_EQUAL_STRING("primary", wifi.getConnectedSsid().c_str());
+}
+
+/**
+ * @brief タイムアウトを超えて確立しない場合は失敗と判定することを検証する。
+ */
+void test_connect_gives_up_when_timeout_elapses(void) {
+  // WIFI_PRIMARY_CONNECT_WAIT(3000ms)を超えて確立するケース
+  FakeWiFiState::setDirectResult("primary", WL_CONNECTED, 3100);
+  WiFiESP32 wifi("primary", "primary-password");
+
+  TEST_ASSERT_FALSE(wifi.begin());
+  TEST_ASSERT_FALSE(wifi.isConnected());
+}
+
+/**
+ * @brief 未接続時のdisconnectがステータスを変えないことを検証する。
+ *
+ * 実機のesp_wifi_disconnect()は接続中でなければイベントを発生させない。
+ * モックがこの挙動を再現していないと、古いステータスの問題を検出できない。
+ */
+void test_disconnect_does_not_reset_status_when_not_connected(void) {
+  WiFi.mode(WIFI_STA);
+  FakeWiFiState::setDirectResult("primary", WL_NO_SSID_AVAIL, 100);
+
+  WiFi.begin("primary", "primary-password");
+  delay(100);
+  TEST_ASSERT_EQUAL_INT(WL_NO_SSID_AVAIL, WiFi.status());
+
+  WiFi.disconnect(false, false);
+  TEST_ASSERT_EQUAL_INT(WL_NO_SSID_AVAIL, WiFi.status());
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_legacy_constructor_uses_primary_credentials);
@@ -515,5 +581,9 @@ int main(int, char**) {
   RUN_TEST(test_health_check_retries_after_ten_seconds);
   RUN_TEST(test_health_check_returns_immediately_when_connected);
   RUN_TEST(test_connection_logs_do_not_contain_passwords);
+  RUN_TEST(test_connect_succeeds_when_previous_attempt_left_stale_status);
+  RUN_TEST(test_connect_waits_until_connection_is_established);
+  RUN_TEST(test_connect_gives_up_when_timeout_elapses);
+  RUN_TEST(test_disconnect_does_not_reset_status_when_not_connected);
   return UNITY_END();
 }

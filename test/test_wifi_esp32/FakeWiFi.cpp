@@ -137,7 +137,15 @@ bool IPAddress::operator!=(const IPAddress& value) const {
 
 uint8_t IPAddress::operator[](size_t index) const { return _bytes[index]; }
 
-void FakeWiFiClass::mode(uint8_t) { ++FakeWiFiState::modeCalls; }
+// 実機ではSTAの初回有効化だけがSTA_STARTイベントを発生させる。
+// 2回目以降のWiFi.mode(WIFI_STA)はステータスを変えない。
+void FakeWiFiClass::mode(uint8_t) {
+  ++FakeWiFiState::modeCalls;
+  if (_staStarted) return;
+  _staStarted = true;
+  _status = WL_DISCONNECTED;
+  _pendingActive = false;
+}
 
 wl_status_t FakeWiFiClass::begin(const char* ssid, const char* password,
                                  int32_t channel, const uint8_t* bssid,
@@ -164,14 +172,24 @@ wl_status_t FakeWiFiClass::begin(const char* ssid, const char* password,
     _pendingResult.bssid = call.bssid;
     _pendingResult.channel = channel;
   }
-  _status = WL_IDLE_STATUS;
+  // 実機のWiFiSTAClass::begin()はステータスを更新しない。
+  // 接続結果はイベント到着時、つまり所要時間の経過後に反映される。
+  _pendingActive = true;
+  _pendingStartMs = fakeMillis;
   return _status;
 }
 
+// 実機のwaitForConnectResult()と同じループ条件を再現する。
+// ステータスが1〜5の間は即座に抜けるため、古い値が残っていると待たずに戻る。
 wl_status_t FakeWiFiClass::waitForConnectResult(uint32_t timeoutMs) {
   ++FakeWiFiState::waitCalls;
-  applyConnectionResult(_pendingResult, timeoutMs);
-  return _status;
+  const uint32_t startMs = fakeMillis;
+  while (fakeMillis - startMs < timeoutMs) {
+    const wl_status_t current = status();
+    if (current != WL_IDLE_STATUS && current < WL_DISCONNECTED) break;
+    delay(100);
+  }
+  return status();
 }
 
 bool FakeWiFiClass::config(IPAddress ip, IPAddress gateway, IPAddress subnet,
@@ -180,15 +198,20 @@ bool FakeWiFiClass::config(IPAddress ip, IPAddress gateway, IPAddress subnet,
   return true;
 }
 
+// 実機のesp_wifi_disconnect()は接続中でなければイベントを出さない。
+// そのためステータスは変化せず、直前の失敗理由が残り続ける。
 bool FakeWiFiClass::disconnect(bool, bool) {
   ++FakeWiFiState::disconnectCalls;
-  _status = WL_DISCONNECTED;
+  if (status() == WL_CONNECTED) _status = WL_DISCONNECTED;
+  _pendingActive = false;
   return true;
 }
 
 int16_t FakeWiFiClass::scanNetworks(bool, bool, bool, uint32_t, uint8_t,
                                     const char*, const uint8_t*) {
   ++FakeWiFiState::scanCalls;
+  // スキャンは進行中の接続試行を中断する。
+  _pendingActive = false;
   return static_cast<int16_t>(configuredScanNetworks.size());
 }
 
@@ -207,7 +230,24 @@ bool FakeWiFiClass::getNetworkInfo(uint8_t networkItem, String& ssid,
 
 void FakeWiFiClass::scanDelete() { ++FakeWiFiState::scanDeleteCalls; }
 
-wl_status_t FakeWiFiClass::status() const { return _status; }
+wl_status_t FakeWiFiClass::status() {
+  settlePendingResult();
+  return _status;
+}
+
+// 所要時間が経過した接続試行の結果を確定させ、イベント到着を模擬する。
+void FakeWiFiClass::settlePendingResult() {
+  if (!_pendingActive) return;
+  if (fakeMillis - _pendingStartMs < _pendingResult.durationMs) return;
+  _pendingActive = false;
+  _status = _pendingResult.status;
+  if (_status != WL_CONNECTED) return;
+  _ssid = String(_pendingResult.ssid);
+  _ip = _pendingResult.ip;
+  _rssi = _pendingResult.rssi;
+  _bssid = _pendingResult.bssid;
+  _channel = _pendingResult.channel;
+}
 
 String FakeWiFiClass::SSID() const { return _ssid; }
 
@@ -221,6 +261,7 @@ int32_t FakeWiFiClass::channel() const { return _channel; }
 
 void FakeWiFiClass::applyConnectionResult(
     const FakeWiFiState::ConnectionResult& result, uint32_t timeoutMs) {
+  _pendingActive = false;
   fakeMillis += std::min(result.durationMs, timeoutMs);
   if (result.durationMs > timeoutMs) {
     _status = WL_DISCONNECTED;

@@ -117,7 +117,7 @@ class FakeWiFiClass {
                       uint8_t& encryptionType, int32_t& rssi, uint8_t*& bssid,
                       int32_t& channel);
   void scanDelete();
-  wl_status_t status() const;
+  wl_status_t status();
   String SSID() const;
   IPAddress localIP() const;
   int32_t RSSI() const;
@@ -128,7 +128,12 @@ class FakeWiFiClass {
                              uint32_t timeoutMs);
 
  private:
+  void settlePendingResult();
+
   wl_status_t _status = WL_DISCONNECTED;
+  bool _staStarted = false;
+  bool _pendingActive = false;
+  uint32_t _pendingStartMs = 0;
   FakeWiFiState::ConnectionResult _pendingResult{
       WL_CONNECT_FAILED, 0, "", {{0, 0, 0, 0, 0, 0}}, 0, IPAddress(), -100};
   String _ssid;
