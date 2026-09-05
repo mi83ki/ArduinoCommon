@@ -27,6 +27,8 @@
 #define WIFI_PRIMARY_CONNECT_WAIT (3000)
 /** WiFi再接続に失敗した後の再試行間隔[ms] */
 #define WIFI_RECONNECT_INTERVAL (10000)
+/** WiFi接続の確立を確認するポーリング間隔[ms] */
+#define WIFI_CONNECT_POLL_INTERVAL (100)
 
 class WiFiESP32 {
  public:

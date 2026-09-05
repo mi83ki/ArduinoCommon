@@ -233,7 +233,13 @@ bool WiFiESP32::connectWiFi(void) {
 }
 
 /**
- * @brief 指定した認証情報で接続し、結果が確定するまで待つ。
+ * @brief 指定した認証情報で接続し、接続確立をタイムアウトまで待つ。
+ *
+ * WiFi.waitForConnectResult()は使用しない。ESP32 Arduino Coreの接続ステータス
+ * はイベントからしか更新されず、WiFi.begin()でもリセットされない。そのため
+ * 直前の試行が残したWL_NO_SSID_AVAIL等が次の試行にも見えてしまい、
+ * waitForConnectResult()が待機せずに戻る。判定にはWL_CONNECTEDだけを使い、
+ * 中間ステータスは古い値の可能性があるものとして無視する。
  *
  * @param credential 接続に使用する現在の認証情報
  * @param timeoutMs 接続待機時間
@@ -249,7 +255,13 @@ bool WiFiESP32::connectWithCredential(const WiFiCredential &credential,
                              ? nullptr
                              : credential.password.c_str();
   WiFi.begin(credential.ssid.c_str(), password, channel, bssid);
-  return WiFi.waitForConnectResult(timeoutMs) == WL_CONNECTED;
+
+  const uint32_t startTime = millis();
+  while (millis() - startTime < timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED) return true;
+    delay(WIFI_CONNECT_POLL_INTERVAL);
+  }
+  return false;
 }
 
 /**

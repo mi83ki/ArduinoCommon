@@ -78,7 +78,6 @@ extern std::vector<ConfigCall> configCalls;
 extern std::vector<std::pair<std::string, std::string>> addedAps;
 extern uint32_t modeCalls;
 extern uint32_t disconnectCalls;
-extern uint32_t waitCalls;
 extern uint32_t multiRunCalls;
 extern uint32_t scanCalls;
 extern uint32_t scanDeleteCalls;
@@ -105,7 +104,6 @@ class FakeWiFiClass {
   wl_status_t begin(const char* ssid, const char* password = nullptr,
                     int32_t channel = 0, const uint8_t* bssid = nullptr,
                     bool connect = true);
-  wl_status_t waitForConnectResult(uint32_t timeoutMs = 60000);
   bool config(IPAddress ip, IPAddress gateway, IPAddress subnet,
               IPAddress dns1 = IPAddress(), IPAddress dns2 = IPAddress());
   bool disconnect(bool wifiOff = false, bool eraseAp = false);

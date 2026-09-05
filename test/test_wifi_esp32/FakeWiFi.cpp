@@ -26,7 +26,6 @@ std::vector<ConfigCall> configCalls;
 std::vector<std::pair<std::string, std::string>> addedAps;
 uint32_t modeCalls = 0;
 uint32_t disconnectCalls = 0;
-uint32_t waitCalls = 0;
 uint32_t multiRunCalls = 0;
 uint32_t scanCalls = 0;
 uint32_t scanDeleteCalls = 0;
@@ -40,7 +39,6 @@ void reset() {
   addedAps.clear();
   modeCalls = 0;
   disconnectCalls = 0;
-  waitCalls = 0;
   multiRunCalls = 0;
   scanCalls = 0;
   scanDeleteCalls = 0;
@@ -177,19 +175,6 @@ wl_status_t FakeWiFiClass::begin(const char* ssid, const char* password,
   _pendingActive = true;
   _pendingStartMs = fakeMillis;
   return _status;
-}
-
-// 実機のwaitForConnectResult()と同じループ条件を再現する。
-// ステータスが1〜5の間は即座に抜けるため、古い値が残っていると待たずに戻る。
-wl_status_t FakeWiFiClass::waitForConnectResult(uint32_t timeoutMs) {
-  ++FakeWiFiState::waitCalls;
-  const uint32_t startMs = fakeMillis;
-  while (fakeMillis - startMs < timeoutMs) {
-    const wl_status_t current = status();
-    if (current != WL_IDLE_STATUS && current < WL_DISCONNECTED) break;
-    delay(100);
-  }
-  return status();
 }
 
 bool FakeWiFiClass::config(IPAddress ip, IPAddress gateway, IPAddress subnet,
