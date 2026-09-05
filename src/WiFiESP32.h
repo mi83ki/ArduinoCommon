@@ -12,31 +12,77 @@
 #include <Arduino.h>
 
 #include <WiFi.h>
+#include <WiFiMulti.h>
+
+#include <array>
+#include <vector>
 
 #include "Log.h"
-#include "Timer.h"
-
 
 /** WiFiの接続確立を待つ時間[ms] */
 #define WIFI_TRY_WAIT (5000)
-/** WiFi接続何回失敗したらあきらめるか */
-#define WIFI_TRY_TIME (2)
+/** RTC情報を使用したWiFi接続の確立を待つ時間[ms] */
+#define WIFI_FAST_CONNECT_WAIT (2000)
+/** 通常SSIDへのWiFi接続の確立を待つ時間[ms] */
+#define WIFI_PRIMARY_CONNECT_WAIT (3000)
+/** WiFi再接続に失敗した後の再試行間隔[ms] */
+#define WIFI_RECONNECT_INTERVAL (10000)
+/** WiFi接続の確立を確認するポーリング間隔[ms] */
+#define WIFI_CONNECT_POLL_INTERVAL (100)
 
-class WiFiESP32
-{
-public:
+class WiFiESP32 {
+ public:
   WiFiESP32(const char *, const char *);
   ~WiFiESP32();
+  WiFiESP32(const WiFiESP32 &) = delete;
+  WiFiESP32 &operator=(const WiFiESP32 &) = delete;
+  bool addAP(const char *, const char *);
+  bool addAP(const char *, const char *, const char *, const char *,
+             const char *);
+  bool setStaticIp(const char *, const char *, const char *);
   bool begin(void);
   bool isConnected(void);
+  String getConnectedSsid(void) const;
   bool healthCheck(void);
 
-private:
+ private:
+  struct WiFiCredential {
+    String ssid;
+    String password;
+    bool primary;
+    bool staticIpEnabled;
+    IPAddress staticIp;
+    IPAddress gateway;
+    IPAddress subnet;
+  };
+
+  struct ScannedAccessPoint {
+    const WiFiCredential *credential;
+    int32_t rssi;
+    std::array<uint8_t, 6> bssid;
+    int32_t channel;
+  };
+
+  bool addCredential(const char *, const char *, bool, const IPAddress &,
+                     const IPAddress &, const IPAddress &);
   bool connectWiFi(void);
+  bool connectWithCredential(const WiFiCredential &, uint32_t, int32_t = 0,
+                             const uint8_t * = nullptr);
+  bool connectFromRtc(void);
+  bool connectPrimary(void);
+  bool connectFallback(void);
+  bool connectFallbackFromScan(void);
+  bool configureNetwork(const WiFiCredential &);
+  bool enableDhcp(void);
+  bool hasStaticFallback(void) const;
+  const WiFiCredential *findCredential(const char *) const;
+  void saveConnectedAccessPoint(void);
+  void logConnectionResult(uint32_t) const;
   void disconnectWiFi(void);
 
-private:
-  const char *m_myWiFiSSID;
-  const char *m_myWiFiPass;
-  IPAddress m_clientIP;
+  std::vector<WiFiCredential> _credentials;
+  WiFiMulti _wifiMulti;
+  IPAddress _clientIp;
+  uint32_t _lastFailedAttemptMs;
+  bool _hasFailedAttempt;
 };

@@ -9,6 +9,8 @@
 
 #include "MQTTClientESP32.h"
 
+#include <algorithm>
+
 #include "Log.h"
 
 #ifndef MQTT_FEATURE_DISABLED
@@ -24,6 +26,7 @@ MQTTClientESP32::MQTTClientESP32(String mqttHost, uint16_t mqttPort, uint16_t bu
   : _mqttHost(mqttHost)
   , _mqttPort(mqttPort)
   , _lastReconnectAttempt(0)
+  , _reconnectImmediately(false)
   , _wifiClient(WiFiClient())
   , _mqttClient(PubSubClient(_wifiClient))
   , _messageCallbacks()
@@ -51,6 +54,42 @@ MQTTClientESP32::MQTTClientESP32(String mqttHost, uint16_t mqttPort, uint16_t bu
  */
 MQTTClientESP32::~MQTTClientESP32() {}
 
+/**
+ * @brief MQTTブローカーの接続先を変更する。
+ *
+ * 接続先が変わる場合は現在のMQTT接続を切断し、次のhealthCheck()で
+ * 待機時間を置かずに再接続する。同じ接続先の場合は何も変更しない。
+ *
+ * @param mqttHost MQTTブローカーのホスト名またはIPアドレス
+ * @param mqttPort MQTTブローカーのポート番号
+ * @return true 設定成功、または同じ設定のため変更不要
+ * @return false ホストが空
+ */
+bool MQTTClientESP32::setServer(String mqttHost, uint16_t mqttPort)
+{
+  if (mqttHost.length() == 0)
+  {
+    logger.error("MQTTClientESP32.setServer(): MQTT host is empty.");
+    return false;
+  }
+  if (_mqttHost == mqttHost && _mqttPort == mqttPort)
+  {
+    return true;
+  }
+
+  if (_mqttClient.connected())
+  {
+    _mqttClient.disconnect();
+  }
+  _mqttHost = mqttHost;
+  _mqttPort = mqttPort;
+  _mqttClient.setServer(_mqttHost.c_str(), _mqttPort);
+  _reconnectImmediately = true;
+  logger.info("MQTTClientESP32.setServer(): " + _mqttHost + ":" +
+              String(_mqttPort));
+  return true;
+}
+
 bool MQTTClientESP32::reconnect()
 {
   logger.info("MQTTClientESP32.reconnect(): start, mqttHost: " + _mqttHost + ", mqttPort: " + String(_mqttPort) +
@@ -77,10 +116,12 @@ bool MQTTClientESP32::healthCheck(void)
 {
   if (!_mqttClient.connected())
   {
-    long now = millis();
-    if (now - _lastReconnectAttempt > MQTT_RECONNECT_INTERVAL)
+    const uint32_t now = millis();
+    if (_reconnectImmediately ||
+        now - _lastReconnectAttempt > MQTT_RECONNECT_INTERVAL)
     {
       _lastReconnectAttempt = now;
+      _reconnectImmediately = false;
       // Attempt to reconnect
       if (reconnect())
       {
