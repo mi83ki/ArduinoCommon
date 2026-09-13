@@ -602,8 +602,18 @@ void test_rtc_cache_tracks_full_network_credentials() {
   }
 }
 
+/** @brief 再接続待ちを一巡失敗に数えず、製品指定の30秒間隔でだけ再試行する。 */
+void test_connection_cycle_counter_and_configurable_retry_delay() {
+  WiFiESP32 wifi("missing","password");wifi.setReconnectInterval(30000);
+  TEST_ASSERT_EQUAL(0,wifi.completedConnectionCycles());TEST_ASSERT_FALSE(wifi.begin());
+  TEST_ASSERT_EQUAL(1,wifi.completedConnectionCycles());const auto failedAt=millis();
+  delay(29999);TEST_ASSERT_FALSE(wifi.healthCheck());TEST_ASSERT_EQUAL(1,wifi.completedConnectionCycles());
+  delay(1);TEST_ASSERT_FALSE(wifi.healthCheck());TEST_ASSERT_EQUAL(2,wifi.completedConnectionCycles());
+  TEST_ASSERT_GREATER_OR_EQUAL(30000,millis()-failedAt);
+}
 int main(int, char**) {
   UNITY_BEGIN();
+  RUN_TEST(test_connection_cycle_counter_and_configurable_retry_delay);
   RUN_TEST(test_explicit_dns_profiles);
   RUN_TEST(test_dhcp_reset_clears_static_dns);
   RUN_TEST(test_rtc_cache_tracks_full_network_credentials);
