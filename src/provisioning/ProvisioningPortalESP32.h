@@ -43,7 +43,7 @@ class ProvisioningPortalESP32 {
   const uint8_t* _html=nullptr;
   size_t _htmlSize=0;
   mutable std::mutex _mutex;
-  bool _scanRequested=false;
+  bool _scanRequested=false,_scanRejected=false;
   WiFiScanState _scanState=WiFiScanState::Idle;
   std::vector<WiFiScanEntry> _scanResults;
   uint32_t _lastActivity=0;
