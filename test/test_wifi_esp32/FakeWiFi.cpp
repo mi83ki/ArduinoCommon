@@ -33,6 +33,7 @@ uint32_t nullAddressParseCalls = 0;
 esp_reset_reason_t resetReason = ESP_RST_POWERON;
 
 void reset() {
+  FakeProvisioning::state()=FakeProvisioning::State{};
   fakeMillis = 0;
   beginCalls.clear();
   configCalls.clear();
@@ -137,7 +138,8 @@ uint8_t IPAddress::operator[](size_t index) const { return _bytes[index]; }
 
 // 実機ではSTAの初回有効化だけがSTA_STARTイベントを発生させる。
 // 2回目以降のWiFi.mode(WIFI_STA)はステータスを変えない。
-void FakeWiFiClass::mode(uint8_t) {
+void FakeWiFiClass::mode(uint8_t mode) {
+  FakeProvisioning::state().mode=mode;
   ++FakeWiFiState::modeCalls;
   if (_staStarted) return;
   _staStarted = true;
@@ -192,12 +194,12 @@ bool FakeWiFiClass::disconnect(bool, bool) {
   return true;
 }
 
-int16_t FakeWiFiClass::scanNetworks(bool, bool, bool, uint32_t, uint8_t,
+int16_t FakeWiFiClass::scanNetworks(bool async, bool, bool, uint32_t, uint8_t,
                                     const char*, const uint8_t*) {
   ++FakeWiFiState::scanCalls;
   // スキャンは進行中の接続試行を中断する。
   _pendingActive = false;
-  return static_cast<int16_t>(configuredScanNetworks.size());
+  return async ? WIFI_SCAN_RUNNING : static_cast<int16_t>(configuredScanNetworks.size());
 }
 
 bool FakeWiFiClass::getNetworkInfo(uint8_t networkItem, String& ssid,
@@ -277,3 +279,14 @@ uint8_t WiFiMulti::run(uint32_t connectTimeout) {
 esp_reset_reason_t esp_reset_reason() {
   return FakeWiFiState::resetReason;
 }
+
+void FakeWiFiClass::persistent(bool value) {FakeProvisioning::state().persistent=value;}
+bool FakeWiFiClass::setAutoReconnect(bool value) {FakeProvisioning::state().autoReconnect=value;return true;}
+bool FakeWiFiClass::softAP(const char* ssid,const char* password,int,int,int clients) {
+  auto& state=FakeProvisioning::state();state.ap=state.apSuccess;state.apSsid=ssid;state.apPassword=password;
+  ++state.apStarts;state.clients=clients;return state.apSuccess;
+}
+bool FakeWiFiClass::softAPConfig(IPAddress ip,IPAddress,IPAddress) {FakeProvisioning::state().apAddress=ip;return true;}
+bool FakeWiFiClass::softAPdisconnect(bool) {auto& s=FakeProvisioning::state();s.ap=false;++s.apStops;return true;}
+IPAddress FakeWiFiClass::subnetMask() {return IPAddress(255,255,255,0);}
+int16_t FakeWiFiClass::scanComplete() {return FakeProvisioning::state().scanResult;}

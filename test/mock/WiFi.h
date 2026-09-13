@@ -20,6 +20,10 @@ typedef enum {
 } wl_status_t;
 
 static const uint8_t WIFI_STA = 1;
+static const uint8_t WIFI_AP_STA = 3;
+static const uint8_t WIFI_OFF = 0;
+static const int WIFI_SCAN_RUNNING = -1;
+static const int WIFI_SCAN_FAILED = -2;
 static const uint32_t INADDR_NONE = 0;
 
 class WiFiClient {};
@@ -103,6 +107,13 @@ void addScanNetwork(const char* ssid, int32_t rssi, int32_t channel,
 class FakeWiFiClass {
  public:
   void mode(uint8_t mode);
+  void persistent(bool enabled);
+  bool setAutoReconnect(bool enabled);
+  bool softAP(const char* ssid,const char* password,int channel=1,int hidden=0,int clients=4);
+  bool softAPConfig(IPAddress ip,IPAddress gateway,IPAddress mask);
+  bool softAPdisconnect(bool off=false);
+  IPAddress subnetMask();
+  int16_t scanComplete();
   wl_status_t begin(const char* ssid, const char* password = nullptr,
                     int32_t channel = 0, const uint8_t* bssid = nullptr,
                     bool connect = true);
@@ -144,3 +155,14 @@ class FakeWiFiClass {
 };
 
 extern FakeWiFiClass WiFi;
+
+namespace FakeProvisioning {
+struct State {
+  uint8_t mode=0;
+  bool persistent=true,autoReconnect=true,ap=false,apSuccess=true;
+  int apStarts=0,apStops=0,clients=0,scanResult=-1,scanStops=0;
+  std::string apSsid,apPassword;
+  IPAddress apAddress;
+};
+inline State& state() {static State value;return value;}
+}
