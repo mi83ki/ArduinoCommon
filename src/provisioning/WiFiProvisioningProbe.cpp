@@ -99,7 +99,7 @@ void WiFiProvisioningProbe::poll() {
             ssid.length()==0 || ssid.length()>31 || !WiFiProfileValidator::validUtf8(ssid.c_str()))continue;
         auto found=std::find_if(_scanResults.begin(),_scanResults.end(),[&](const WiFiScanEntry& entry){return entry.ssid==ssid.c_str();});
         if(found!=_scanResults.end()) {if(rssi>found->rssi) {found->rssi=rssi;found->open=encryption==0;}}
-        else _scanResults.push_back({ssid.c_str(),rssi,encryption==0});
+        else {WiFiScanEntry entry;entry.ssid=ssid.c_str();entry.rssi=rssi;entry.open=encryption==0;_scanResults.push_back(entry);}
         std::sort(_scanResults.begin(),_scanResults.end(),[](const WiFiScanEntry& a,const WiFiScanEntry& b){return a.rssi>b.rssi;});
         if(_scanResults.size()>20)_scanResults.pop_back();
       }

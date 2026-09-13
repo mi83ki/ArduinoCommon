@@ -366,6 +366,21 @@ LED 配置に依存するメソッドやデバイス固有のレイアウト処�
 
 ## 対応環境
 
+### 設定保存とWi-Fiプロビジョニング
+
+`settings/`はバイト列の保存機構、`provisioning/`はAP資格情報・Wi-Fi検証・接続試験・設定画面の部品です。機種、MQTT、校正、設定の確定条件、再起動判断を含みません。保存だけなら[PreferencesSettings](examples/PreferencesSettings/)、画面を含む例は[WiFiProvisioning](examples/WiFiProvisioning/README.md)を参照してください。
+
+- `ApCredentialStore`: backend・SSID接頭辞・MAC・安全な乱数生成を注入します。`loadOrCreate`は未保存時だけ生成し、破損・未知schema・I/O異常では既存のQRラベルを無効化する自動再生成をしません。明示的な`regenerate`の許可条件は製品側で判断します。ESP32の乱数はWi-Fi等のエントロピー源を有効にして利用します。
+- `WiFiProfileValidator`: SDKなしで最大4プロファイル、SSID・認証・IP・DNS、パスワードのkeep/replace/clearを検証します。プロファイルごとの製品項目は利用側で保持・検証します。
+- `WiFiProvisioningProbe`: Wi-Fiの単一所有者から`begin/start/poll/cancel/finish/stop`を呼びます。`start`の期限は`millis()`基準の絶対時刻、上限20秒です。成功後はSTAを維持し、利用側の診断・保存終了時に`finish`します。スキャンと接続試験は直列です。通常のWiFiESP32と同時実行しません。
+- `ProvisioningPortalESP32`: 起動前の`addHandler`で製品APIを登録します。HTTPハンドラーは値をコピーしてキューへ渡すだけとし、Wi-Fi・NVS・停止処理はownerのloopで実施します。`requestStop`→`tick`でHTTPタスク外から停止します。`apAvailable`以外のProbe操作・結果取得もowner側に限定します。
+
+PortalはAP宛先・Host・Origin・RAMセッションを確認し、bodyは4096バイト、総受信3秒、socketは2本に制限します。`GET /api/session`、SSID検索、`POST /api/activity`は共通で提供します。画面と入力操作のactivityだけが無操作期限の基準となり、状態ポーリングは更新しません。CNAは通常ブラウザーで固定URLを開く案内とし、自動Safari起動を前提にしません。AP/STAのサブネット重複時はAPを一時停止します。
+
+共通JavaScriptの`WiFiForm.mount(container, config, constraints)`、`read()`、`showErrors(errors)`、`clearSecrets()`を利用します。`constraints.maximumProfiles`と`profileExtension(card, profile)`で利用側の項目を追加できます。後者は`read()`を持つオブジェクトを返します。`Client`は秘密値をURL・localStorage・ログに保存しません。独自の処理段階は`createStatus().show({phase, message})`のmessageで表します。
+
+HTTP/ProbeのESP32実装はArduino core 2.0.17で検証しています。Preferences、DNSServer、WiFiはframework同梱です。保存だけの利用で`ARDUINOCOMMON_DISABLE_PROVISIONING`を定義すると、HTTP/ProbeはSDK include前に除外されます。設定名は共通の制御フラグであり製品の機種defineではありません。`esp32_preferences_gc_example`はフラグなしのリンク除去も比較します。新規部品によって全利用者へM5・ArduinoJson・MQTT依存を追加しません。
+
 - AVR
 - ESP32
 - ESP8266
