@@ -170,6 +170,19 @@ void test_missing_reference_rejects_new_root() {
   STATUS(Corrupt, store.load(snapshot));
 }
 
+/** @brief サイズ上限でschemaを読めないrootを破損扱いにして上書きしない。 */
+void test_oversized_root_blocks_writes() {
+  MemorySettingsBackend backend;
+  AtomicRecordStore store(backend, {first}, roots, 1);
+  STATUS(Ok, store.commit(0, {{0,{1}}}, {1}));
+  backend.values["root1"]=SettingsBytes(roots.format.maximumSize+1,0);
+  SettingsSnapshot snapshot;
+  STATUS(TooLarge, store.load(snapshot));
+  const int writes=backend.writes;
+  STATUS(TooLarge, store.commit(1,{{0,{2}}},{1}));
+  TEST_ASSERT_EQUAL(writes,backend.writes);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_initial_bundle_and_reload);
@@ -182,5 +195,6 @@ int main() {
   RUN_TEST(test_invalid_requests_never_write);
   RUN_TEST(test_generation_overflow_and_capacity_are_preflight_errors);
   RUN_TEST(test_missing_reference_rejects_new_root);
+  RUN_TEST(test_oversized_root_blocks_writes);
   return UNITY_END();
 }
