@@ -41,14 +41,16 @@ bool WiFiProvisioningProbe::begin(const ApCredentials& credentials,IPv4 apAddres
 }
 /** @brief 同じ資格情報と固定アドレスでAPを復帰する。 */
 bool WiFiProvisioningProbe::restoreAp() {
+  _apAvailable=false;
   WiFi.mode(WIFI_AP_STA);
   const auto ip=ipAddress(_apAddress);
   if(!WiFi.softAPConfig(ip,ip,IPAddress(255,255,255,0)) ||
       !WiFi.softAP(_credentials.ssid.c_str(),_credentials.password.c_str(),1,0,1))return false;
-  _result.apSuspended=false;return true;
+  _result.apSuspended=false;_apAvailable=true;return true;
 }
 /** @brief スキャンと接続試験を停止し、無線の所有を返す。HTTPタスク外で呼ぶ。 */
 void WiFiProvisioningProbe::stop() {
+  _apAvailable=false;
   if(_scanState==WiFiScanState::Scanning)esp_wifi_scan_stop();
   WiFi.scanDelete();WiFi.disconnect(false,false);WiFi.softAPdisconnect(true);WiFi.mode(WIFI_OFF);
   _started=false;_stationOwned=false;_scanState=WiFiScanState::Idle;_scanResults.clear();_result={};
@@ -62,7 +64,8 @@ bool WiFiProvisioningProbe::start(const WiFiProfile& profile,uint64_t jobId,uint
   _result={};_result.jobId=jobId;_result.profileId=profile.id;_result.state=WiFiProbeState::Connecting;
   WiFi.disconnect(false,false);
   if(profile.staticIp && overlaps(_apAddress,profile.ip,profile.mask)) {
-    if(!WiFi.softAPdisconnect(false)) {fail("ap_stop_failed");return true;}
+    _apAvailable=false;
+    if(!WiFi.enableAP(false)) {fail("ap_stop_failed");return true;}
     _result.apSuspended=true;
   }
   bool configured;
@@ -113,7 +116,8 @@ void WiFiProvisioningProbe::poll() {
   const auto address=bytes(WiFi.localIP());
   if(address==IPv4{} || (_profile.staticIp && address!=_profile.ip))return;
   if(!_result.apSuspended && overlaps(_apAddress,address,bytes(WiFi.subnetMask()))) {
-    if(!WiFi.softAPdisconnect(false)) {fail("ap_stop_failed");return;}
+    _apAvailable=false;
+    if(!WiFi.enableAP(false)) {fail("ap_stop_failed");return;}
     _result.apSuspended=true;
   }
   _result.address=address;_result.state=WiFiProbeState::Succeeded;
@@ -134,6 +138,8 @@ bool WiFiProvisioningProbe::finish(uint64_t jobId) {
 }
 /** @brief 結果を所有コピーで返す。公開APIの呼出しは同一所有タスクへ直列化する。 */
 WiFiProbeResult WiFiProvisioningProbe::result() const {return _result;}
+/** @brief HTTP側からSDKに触れず、APが利用できるかを原子的に確認する。 */
+bool WiFiProvisioningProbe::apAvailable() const {return _apAvailable;}
 /** @brief 接続試験中のスキャンを拒否し、30秒以内の結果は再利用する。 */
 bool WiFiProvisioningProbe::startScan() {
   if(!_started || _stationOwned || _scanState==WiFiScanState::Scanning)return false;

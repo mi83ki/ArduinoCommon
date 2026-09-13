@@ -103,6 +103,7 @@ bool ProvisioningPortalESP32::begin(const ApCredentials& credentials,ApCredentia
 }
 /** @brief 接続元の申告ではなくaccepted socketの宛先IPv4を検証する。 */
 bool ProvisioningPortalESP32::apSocket(int socket) const {
+  if(!_probe.apAvailable())return false;
   sockaddr_in destination{};socklen_t size=sizeof(destination);
   return getsockname(socket,reinterpret_cast<sockaddr*>(&destination),&size)==0 &&
       destination.sin_family==AF_INET && destination.sin_addr.s_addr==inet_addr(_host.c_str());

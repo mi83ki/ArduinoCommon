@@ -1,6 +1,7 @@
 #pragma once
 #include "WiFiProfileValidator.h"
 #include "ApCredentialStore.h"
+#include <atomic>
 
 namespace ArduinoCommon {
 enum class WiFiProbeState {Idle,Connecting,Succeeded,Failed,Cancelled};
@@ -23,6 +24,7 @@ class WiFiProvisioningProbe {
   bool cancel(uint64_t jobId);
   bool finish(uint64_t jobId);
   WiFiProbeResult result() const;
+  bool apAvailable() const;
   bool startScan();
   WiFiScanState scanState() const;
   std::vector<WiFiScanEntry> scanResults() const;
@@ -34,6 +36,7 @@ class WiFiProvisioningProbe {
   WiFiProfile _profile;
   WiFiProbeResult _result;
   bool _started=false,_stationOwned=false;
+  std::atomic<bool> _apAvailable{false};
   uint32_t _startedAt=0,_timeout=0,_scanAt=0,_scanCompletedAt=0;
   WiFiScanState _scanState=WiFiScanState::Idle;
   std::vector<WiFiScanEntry> _scanResults;
