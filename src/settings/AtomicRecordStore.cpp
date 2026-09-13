@@ -20,8 +20,7 @@ void set32(SettingsBytes& bytes, size_t offset, uint32_t value) {
 
 /** @brief 読込失敗のうち、別rootへフォールバックしてよいものを判定する。 */
 bool invalidRecord(SettingsStatus status) {
-  return status == SettingsStatus::NotFound || status == SettingsStatus::Corrupt ||
-         status == SettingsStatus::TooLarge;
+  return status == SettingsStatus::NotFound || status == SettingsStatus::Corrupt;
 }
 }  // namespace
 
