@@ -112,6 +112,7 @@ class FakeWiFiClass {
   bool softAP(const char* ssid,const char* password,int channel=1,int hidden=0,int clients=4);
   bool softAPConfig(IPAddress ip,IPAddress gateway,IPAddress mask);
   bool softAPdisconnect(bool off=false);
+  bool enableAP(bool enabled);
   IPAddress subnetMask();
   int16_t scanComplete();
   wl_status_t begin(const char* ssid, const char* password = nullptr,

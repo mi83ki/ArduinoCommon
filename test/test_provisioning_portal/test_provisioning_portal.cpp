@@ -78,6 +78,18 @@ void test_portal_scan_is_queued_and_json_escaped() {
   fakeMillis+=1000;const auto activity=portal.lastActivityMillis();FakeHttp::request(result);
   TEST_ASSERT_EQUAL(activity,portal.lastActivityMillis());
 }
+/** @brief AP停止中は、STAのIPが設定用IPと同じでもAPIアクセスを許可しない。 */
+void test_portal_rejects_suspended_ap_even_for_matching_local_ip() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  WiFiProfile p;p.ssid="overlap";p.password="password";p.staticIp=true;
+  p.ip={{192,168,4,1}};p.gateway={{192,168,4,254}};p.mask={{255,255,255,0}};
+  TEST_ASSERT_TRUE(probe.start(p,1,millis()+20000));
+  auto session=request("/api/session");FakeHttp::request(session);
+  TEST_ASSERT_EQUAL_STRING("403 Forbidden",session.status.c_str());
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+}
 int main() {UNITY_BEGIN();RUN_TEST(test_portal_enforces_ap_host_origin_and_session);
+  RUN_TEST(test_portal_rejects_suspended_ap_even_for_matching_local_ip);
   RUN_TEST(test_portal_body_limits_and_deadlines);RUN_TEST(test_portal_cna_asset_and_deferred_stop);
   RUN_TEST(test_portal_scan_is_queued_and_json_escaped);return UNITY_END();}

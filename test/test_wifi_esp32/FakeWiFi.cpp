@@ -287,6 +287,14 @@ bool FakeWiFiClass::softAP(const char* ssid,const char* password,int,int,int cli
   ++state.apStarts;state.clients=clients;return state.apSuccess;
 }
 bool FakeWiFiClass::softAPConfig(IPAddress ip,IPAddress,IPAddress) {FakeProvisioning::state().apAddress=ip;return true;}
-bool FakeWiFiClass::softAPdisconnect(bool) {auto& s=FakeProvisioning::state();s.ap=false;++s.apStops;return true;}
+bool FakeWiFiClass::softAPdisconnect(bool off) {
+  auto& s=FakeProvisioning::state();if(off)s.ap=false;
+  s.apSsid="default";s.apPassword="";++s.apStops;return true;
+}
+bool FakeWiFiClass::enableAP(bool enabled) {
+  auto& s=FakeProvisioning::state();s.ap=enabled;
+  if(enabled)s.mode|=2;else {s.mode&=~2;++s.apStops;}
+  return true;
+}
 IPAddress FakeWiFiClass::subnetMask() {return IPAddress(255,255,255,0);}
 int16_t FakeWiFiClass::scanComplete() {return FakeProvisioning::state().scanResult;}
