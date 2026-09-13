@@ -9,7 +9,8 @@
       "+<Menu.cpp>",
       "+<SleepHandler.cpp>",
       "+<Timer.cpp>",
-      "+<WiFiESP32.cpp>"
+      "+<WiFiESP32.cpp>",
+      "+<settings/*.cpp>"
     ]
   },
   "dependencies": [

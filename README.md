@@ -169,6 +169,50 @@ EEPROM 関連の保存処理を共通化するクラス群です。
 - `examples/EEPROMStore/LayoutMetadata/LayoutMetadata.ino`
   - `EEPROMSession` と `EEPROMLayoutStore` でレイアウト情報を管理する例
 
+### Preferences設定保存（ESP32）
+
+`settings/`の新しい公開型は`ArduinoCommon`名前空間にあります。既存の
+`EEPROMStore`、`EEPROMStoreUtil`、`WiFiESP32`、`MQTTClientESP32`の名前とAPIは変更していません。
+
+| 部品 | 責務 | 依存 |
+| --- | --- | --- |
+| `ISettingsBackend` | バイト列の保存・取得・指定キー削除 | 標準C++ |
+| `RecordEnvelopeCodec` | 24バイトヘッダー、LE符号化、CRC32、schema検証 | 標準C++ |
+| `AtomicRecordStore` | 1～2論理レコードの2スロット保存、rootによる一括確定 | 標準C++とbackend |
+| `PreferencesBackend` | namespace別のNVS保存、読取専用アクセス、エラー区別 | Arduino-ESP32のPreferencesとNVS |
+
+使用例: `examples/PreferencesSettings/main.cpp`。同ディレクトリのコードはM5Unifiedや
+製品固有のセンサーに依存せず、テスト用のボード設定はATOM S3を使用します。
+
+```sh
+# ArduinoCommonを作業ディレクトリとして実行
+pio test -e native_settings
+pio run -e esp32_preferences_example
+```
+
+サンプルはUSBシリアルの`s`で1バイトの設定値を増やして保存し、`r`で読み戻します。
+再起動後に値が残ることは実機で確認してください。自動テストは電源断相当の障害を模擬しますが、
+実NVSの電源断試験を代替しません。保存だけのビルドは`ARDUINOCOMMON_DISABLE_PROVISIONING`を指定します。
+
+保存するpayloadの型・既定値・移行方法は利用側が定義し、構造体のメモリーをそのまま保存しません。
+`commit(expectedGeneration, updates, metadata)`は変更レコードを先に保存し、採用するrootを最後に保存します。
+更新しないレコードは再書込しません。保存処理の呼出元は1つに直列化してください。
+
+`Indeterminate`はroot保存の結果不明です。`reconcile()`で永続データを読み直し、
+generationと利用側のmetadata（操作ID等）を照合してから成功・失敗を判断します。
+`Corrupt`や`UnsupportedSchema`を受けても共通部品は自動初期化しません。
+namespace/キーはASCIIの1～15文字、削除は指定キーのみです。全消去APIは提供しません。
+
+Preferencesはframework同梱のものを使います。既存メタデータのEEPROM/PubSubClientや
+Arduino Library Manager用のFastLED/IRremoteは他の既存部品の依存であり、
+この保存APIに必要なものではありません。`architectures=*`はライブラリ全体の宣言で、
+PreferencesBackendの非ESP32対応を意味しません。
+
+共通の`native_settings`はESP32境界だけを`test/settings_mock`で置き換えます。
+製品側がライブラリ全体を`lib_ignore`する場合は、PlatformIOのpre-scriptの`BuildSources`で
+`RecordEnvelopeCodec.cpp`と`AtomicRecordStore.cpp`だけを追加し、利用側のbackendを渡してください。
+ライブラリのtest/mock全体を利用側へincludeしないでください。
+
 ## 音と振動の制御
 
 ### TimedPatternPlayer
