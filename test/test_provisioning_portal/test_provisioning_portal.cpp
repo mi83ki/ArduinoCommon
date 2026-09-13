@@ -89,7 +89,21 @@ void test_portal_rejects_suspended_ap_even_for_matching_local_ip() {
   TEST_ASSERT_EQUAL_STRING("403 Forbidden",session.status.c_str());
   TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
 }
+/** @brief 製品sessionは認証境界の内側でだけ生成され、起動後の差替えを禁止する。 */
+void test_session_extension_preserves_portal_security() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);int calls=0;
+  TEST_ASSERT_TRUE(portal.setSessionHandler([&](const std::string& token) {
+    ++calls;return PortalResponse{200,"{\"token\":\""+token+"\",\"revision\":7}"};
+  }));
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  TEST_ASSERT_FALSE(portal.setSessionHandler({}));
+  auto bad=request("/api/session");bad.headers["Host"]="wrong";FakeHttp::request(bad);TEST_ASSERT_EQUAL(0,calls);
+  auto good=request("/api/session");good.headers.erase("X-Setup-Token");FakeHttp::request(good);
+  TEST_ASSERT_EQUAL(1,calls);TEST_ASSERT_TRUE(good.response.find("\"revision\":7")!=std::string::npos);
+  TEST_ASSERT_TRUE(good.response.find("abababababababababababababababab")!=std::string::npos);
+}
 int main() {UNITY_BEGIN();RUN_TEST(test_portal_enforces_ap_host_origin_and_session);
+  RUN_TEST(test_session_extension_preserves_portal_security);
   RUN_TEST(test_portal_rejects_suspended_ap_even_for_matching_local_ip);
   RUN_TEST(test_portal_body_limits_and_deadlines);RUN_TEST(test_portal_cna_asset_and_deferred_stop);
   RUN_TEST(test_portal_scan_is_queued_and_json_escaped);return UNITY_END();}
