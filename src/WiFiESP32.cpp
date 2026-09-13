@@ -253,6 +253,7 @@ uint32_t WiFiESP32::credentialFingerprint(const WiFiCredential& credential) cons
  */
 bool WiFiESP32::begin(void) {
   const bool connected = connectWiFi();
+  ++_completedCycles;
   _hasFailedAttempt = !connected;
   if (connected) return true;
 
@@ -610,12 +611,17 @@ bool WiFiESP32::healthCheck(void) {
     return true;
   }
   if (_hasFailedAttempt &&
-      millis() - _lastFailedAttemptMs < WIFI_RECONNECT_INTERVAL) {
+      millis() - _lastFailedAttemptMs < _reconnectInterval) {
     return false;
   }
 
   const bool connected = connectWiFi();
+  ++_completedCycles;
   _hasFailedAttempt = !connected;
   if (!connected) _lastFailedAttemptMs = millis();
   return connected;
 }
+/** @brief 呼出側が再試行間隔を指定する。未指定では従来の10秒を維持する。 */
+void WiFiESP32::setReconnectInterval(uint32_t milliseconds){_reconnectInterval=std::min<uint32_t>(3600000,std::max<uint32_t>(1000,milliseconds));}
+/** @brief 実際に完了した全候補の接続一巡だけを所有タスクへ返す。 */
+uint32_t WiFiESP32::completedConnectionCycles() const{return _completedCycles;}

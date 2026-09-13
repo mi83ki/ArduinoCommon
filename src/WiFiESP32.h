@@ -48,6 +48,8 @@ class WiFiESP32 {
   bool isConnected(void);
   String getConnectedSsid(void) const;
   bool healthCheck(void);
+  void setReconnectInterval(uint32_t milliseconds);
+  uint32_t completedConnectionCycles() const;
 
  private:
   struct WiFiCredential {
@@ -92,4 +94,6 @@ class WiFiESP32 {
   IPAddress _clientIp;
   uint32_t _lastFailedAttemptMs;
   bool _hasFailedAttempt;
+  uint32_t _reconnectInterval=WIFI_RECONNECT_INTERVAL;
+  uint32_t _completedCycles=0;
 };

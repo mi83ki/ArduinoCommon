@@ -379,6 +379,10 @@ PortalはAP宛先・Host・Origin・RAMセッションを確認し、bodyは4096
 
 共通JavaScriptの`WiFiForm.mount(container, config, constraints)`、`read()`、`showErrors(errors)`、`clearSecrets()`を利用します。`constraints.maximumProfiles`と`profileExtension(card, profile)`で利用側の項目を追加できます。後者は`read()`を持つオブジェクトを返します。`Client`は秘密値をURL・localStorage・ログに保存しません。独自の処理段階は`createStatus().show({phase, message})`のmessageで表します。
 
+`PortalTypes.h`の要求・応答DTOはSDKなしでも利用できます。`setSessionHandler`を起動前に指定すると、共通のAP/Host/Origin検証後に渡されるtokenへ、製品側のrevisionや制約を追加して返せます。起動後の差替えはできません。ハンドラーでAP資格情報を返さないでください。
+
+通常運転の`WiFiESP32`は`setReconnectInterval(ms)`で再試行間隔を指定でき、未指定は従来の10秒です。`completedConnectionCycles()`は全候補を実際に試した回数を返し、単なるバックオフ待ちは含みません。APへ移る条件やRTCの失敗回数は製品側で判断してください。この2つのAPIもWi-Fi所有タスクから利用します。
+
 HTTP/ProbeのESP32実装はArduino core 2.0.17で検証しています。Preferences、DNSServer、WiFiはframework同梱です。保存だけの利用で`ARDUINOCOMMON_DISABLE_PROVISIONING`を定義すると、HTTP/ProbeはSDK include前に除外されます。設定名は共通の制御フラグであり製品の機種defineではありません。`esp32_preferences_gc_example`はフラグなしのリンク除去も比較します。新規部品によって全利用者へM5・ArduinoJson・MQTT依存を追加しません。
 
 - AVR
