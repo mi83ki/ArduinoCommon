@@ -58,6 +58,8 @@ class WiFiESP32 {
     IPAddress staticIp;
     IPAddress gateway;
     IPAddress subnet;
+    IPAddress dns1;
+    IPAddress dns2;
   };
 
   struct ScannedAccessPoint {
@@ -77,6 +79,7 @@ class WiFiESP32 {
   bool connectFallback(void);
   bool connectFallbackFromScan(void);
   bool configureNetwork(const WiFiCredential &);
+  uint32_t credentialFingerprint(const WiFiCredential &) const;
   bool enableDhcp(void);
   bool hasStaticFallback(void) const;
   const WiFiCredential *findCredential(const char *) const;
