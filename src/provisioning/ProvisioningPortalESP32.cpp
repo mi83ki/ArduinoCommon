@@ -65,6 +65,11 @@ ProvisioningPortalESP32::ProvisioningPortalESP32(WiFiProvisioningProbe& probe,Po
 /** @brief 利用側の所有タスクで、HTTP終了を待ってからWi-Fiを解放する。 */
 ProvisioningPortalESP32::~ProvisioningPortalESP32() {stop();}
 /** @brief 起動前だけ製品APIを登録し、標準APIと重複する経路を拒否する。 */
+bool ProvisioningPortalESP32::setSessionHandler(std::function<PortalResponse(const std::string&)> handler) {
+  if(_running)return false;
+  _sessionHandler=std::move(handler);return true;
+}
+/** @brief 起動前に値所有型の製品APIを登録する。 */
 bool ProvisioningPortalESP32::addHandler(PortalMethod method,const std::string& path,Handler handler) {
   if(_running || !handler || path.size()>63 || path.compare(0,5,"/api/")!=0 ||
       path=="/api/session" || path=="/api/scan" || path=="/api/activity" ||
@@ -90,7 +95,7 @@ bool ProvisioningPortalESP32::begin(const ApCredentials& credentials,ApCredentia
   if(!_dns.start(53,"*",IPAddress(ip[0],ip[1],ip[2],ip[3]))) {_probe.stop();return false;}
   httpd_config_t config=HTTPD_DEFAULT_CONFIG();
   config.stack_size=8192;config.max_open_sockets=_options.maximumSockets;config.max_uri_handlers=_options.maximumHandlers;
-  config.recv_wait_timeout=1;config.send_wait_timeout=2;config.lru_purge_enable=true;
+  config.recv_wait_timeout=3;config.send_wait_timeout=3;config.lru_purge_enable=true;
   config.global_user_ctx=this;config.global_user_ctx_free_fn=[](void*){};
   config.open_fn=accept;config.uri_match_fn=httpd_uri_match_wildcard;
   if(httpd_start(&_server,&config)!=ESP_OK) {_dns.stop();_probe.stop();return false;}
@@ -168,7 +173,10 @@ esp_err_t ProvisioningPortalESP32::handle(httpd_req_t* request) {
     return respond(request,200,guide.data(),guide.size(),"text/html; charset=utf-8");
   }
   PortalResponse response;
-  if(path=="/api/session" && request->method==HTTP_GET)response.body="{\"token\":"+quote(_token)+"}";
+  if(path=="/api/session" && request->method==HTTP_GET) {
+    if(_sessionHandler)response=_sessionHandler(_token);
+    else response.body="{\"token\":"+quote(_token)+"}";
+  }
   else if(path=="/api/activity" && request->method==HTTP_POST) {}
   else if(path=="/api/scan") {
     std::lock_guard<std::mutex> lock(_mutex);

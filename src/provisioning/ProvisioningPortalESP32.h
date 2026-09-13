@@ -1,4 +1,5 @@
 #pragma once
+#include "PortalTypes.h"
 #if !defined(ARDUINOCOMMON_DISABLE_PROVISIONING) && (defined(ARDUINO_ARCH_ESP32) || defined(ARDUINOCOMMON_TEST_ESP32))
 #include "WiFiProvisioningProbe.h"
 #include <DNSServer.h>
@@ -7,9 +8,6 @@
 #include <mutex>
 
 namespace ArduinoCommon {
-enum class PortalMethod {Get,Post};
-struct PortalRequest {PortalMethod method;std::string path,body;};
-struct PortalResponse {int status=200;std::string body="{}";};
 struct PortalOptions {
   size_t maximumBody=4096;
   uint32_t receiveMillis=3000;
@@ -22,6 +20,7 @@ class ProvisioningPortalESP32 {
   explicit ProvisioningPortalESP32(WiFiProvisioningProbe&,PortalOptions options={});
   ~ProvisioningPortalESP32();
   bool addHandler(PortalMethod,const std::string& path,Handler);
+  bool setSessionHandler(std::function<PortalResponse(const std::string& token)>);
   bool begin(const ApCredentials&,ApCredentialStore::RandomFill,const uint8_t* gzipHtml=nullptr,size_t size=0);
   void tick();
   void requestStop();
@@ -39,6 +38,7 @@ class ProvisioningPortalESP32 {
   DNSServer _dns;
   httpd_handle_t _server=nullptr;
   std::vector<Route> _routes;
+  std::function<PortalResponse(const std::string&)> _sessionHandler;
   std::string _host,_token;
   const uint8_t* _html=nullptr;
   size_t _htmlSize=0;
