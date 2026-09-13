@@ -178,8 +178,8 @@ wl_status_t FakeWiFiClass::begin(const char* ssid, const char* password,
 }
 
 bool FakeWiFiClass::config(IPAddress ip, IPAddress gateway, IPAddress subnet,
-                           IPAddress, IPAddress) {
-  FakeWiFiState::configCalls.push_back({ip, gateway, subnet});
+                           IPAddress dns1, IPAddress dns2) {
+  FakeWiFiState::configCalls.push_back({ip, gateway, subnet, dns1, dns2});
   return true;
 }
 

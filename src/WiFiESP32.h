@@ -40,6 +40,10 @@ class WiFiESP32 {
   bool addAP(const char *, const char *, const char *, const char *,
              const char *);
   bool setStaticIp(const char *, const char *, const char *);
+  bool setStaticIp(const char *, const char *, const char *, const char *, const char *);
+  bool addAP(const char *, const char *, const char *, const char *,
+             const char *, const char *, const char *);
+  void setDhcp();
   bool begin(void);
   bool isConnected(void);
   String getConnectedSsid(void) const;

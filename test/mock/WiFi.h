@@ -54,6 +54,8 @@ struct ConfigCall {
   IPAddress ip;
   IPAddress gateway;
   IPAddress subnet;
+  IPAddress dns1;
+  IPAddress dns2;
 };
 
 struct ConnectionResult {
