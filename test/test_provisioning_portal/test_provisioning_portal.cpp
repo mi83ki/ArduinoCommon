@@ -3,7 +3,7 @@
 #include "lwip/sockets.h"
 
 using namespace ArduinoCommon;
-void setUp() {FakeWiFiState::reset();FakeSockets::destinations()[1]="192.168.4.1";}
+void setUp() {FakeWiFiState::reset();FakeSockets::destinations().clear();FakeSockets::reportedSizes().clear();FakeSockets::destinations()[1]="192.168.4.1";}
 void tearDown() {}
 ApCredentials credentials{"Example-A1B2C3","ABCDEFGHIJKLMNOPQRST"};
 bool randomBytes(uint8_t* bytes,size_t length) {std::memset(bytes,0xab,length);return true;}
@@ -102,7 +102,40 @@ void test_session_extension_preserves_portal_security() {
   TEST_ASSERT_EQUAL(1,calls);TEST_ASSERT_TRUE(good.response.find("\"revision\":7")!=std::string::npos);
   TEST_ASSERT_TRUE(good.response.find("abababababababababababababababab")!=std::string::npos);
 }
+/** @brief SDKのdual-stackソケットでも、AP宛てのIPv4-mapped接続は設定画面とAPIへ到達する。 */
+void test_portal_accepts_ipv4_mapped_ap_socket() {
+  FakeSockets::destinations()[1]="::ffff:192.168.4.1";
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  const uint8_t asset[]={31,139,0,1};
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes,asset,sizeof(asset)));
+  TEST_ASSERT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+  auto root=request("/");FakeHttp::request(root);
+  TEST_ASSERT_EQUAL_STRING("200 OK",root.status.c_str());TEST_ASSERT_EQUAL_MEMORY(asset,root.response.data(),4);
+  auto session=request("/api/session");session.headers.erase("X-Setup-Token");FakeHttp::request(session);
+  TEST_ASSERT_EQUAL_STRING("200 OK",session.status.c_str());
+  TEST_ASSERT_TRUE(session.response.find("abababababababababababababababab")!=std::string::npos);
+}
+/** @brief mapped形式でもLAN宛て・純IPv6・不完全なアドレスはヘッダー処理前に拒否する。 */
+void test_portal_rejects_other_or_truncated_dual_stack_destinations() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  for(const char* destination:{"::ffff:192.168.1.50","2001:db8::1"}) {
+    FakeSockets::destinations()[1]=destination;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+    auto session=request("/api/session");FakeHttp::request(session);
+    TEST_ASSERT_EQUAL_STRING("403 Forbidden",session.status.c_str());
+  }
+  FakeSockets::destinations()[1]="::ffff:192.168.4.1";
+  FakeSockets::reportedSizes()[1]=sizeof(sockaddr_in6)-1;
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+  FakeSockets::destinations()[1]="192.168.4.1";
+  FakeSockets::reportedSizes()[1]=sizeof(sockaddr_in)-1;
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),99));
+}
 int main() {UNITY_BEGIN();RUN_TEST(test_portal_enforces_ap_host_origin_and_session);
+  RUN_TEST(test_portal_accepts_ipv4_mapped_ap_socket);
+  RUN_TEST(test_portal_rejects_other_or_truncated_dual_stack_destinations);
   RUN_TEST(test_session_extension_preserves_portal_security);
   RUN_TEST(test_portal_rejects_suspended_ap_even_for_matching_local_ip);
   RUN_TEST(test_portal_body_limits_and_deadlines);RUN_TEST(test_portal_cna_asset_and_deferred_stop);
