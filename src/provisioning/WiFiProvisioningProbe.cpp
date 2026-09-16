@@ -2,6 +2,7 @@
 #include "WiFiProvisioningProbe.h"
 #include <WiFi.h>
 #include <esp_netif.h>
+#include <lwip/dns.h>
 #include <esp_wifi.h>
 #include <algorithm>
 
@@ -18,14 +19,17 @@ bool overlaps(const IPv4& ap,const IPv4& sta,const IPv4& mask) {
   }
   return true;
 }
-/** @brief core 2系のconfigが無視するゼロDNSを明示的に解除する。 */
+/** @brief IDFのゼロDNS拒否を避け、TCP/IPタスクで未使用DNSを同期的に解除する。 */
 bool clearDns(bool first,bool second) {
-  auto* netif=esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-  if(!netif)return false;
-  esp_netif_dns_info_t zero{};zero.ip.type=ESP_IPADDR_TYPE_V4;
-  if(first && esp_netif_set_dns_info(netif,ESP_NETIF_DNS_MAIN,&zero)!=ESP_OK)return false;
-  if(second && esp_netif_set_dns_info(netif,ESP_NETIF_DNS_BACKUP,&zero)!=ESP_OK)return false;
-  return esp_netif_set_dns_info(netif,ESP_NETIF_DNS_FALLBACK,&zero)==ESP_OK;
+  if(!esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"))return false;
+  bool clear[]={first,second};
+  return esp_netif_tcpip_exec([](void* context)->esp_err_t {
+    const auto* slots=static_cast<const bool*>(context);
+    if(slots[0])dns_setserver(ESP_NETIF_DNS_MAIN,nullptr);
+    if(slots[1])dns_setserver(ESP_NETIF_DNS_BACKUP,nullptr);
+    dns_setserver(ESP_NETIF_DNS_FALLBACK,nullptr);
+    return ESP_OK;
+  },clear)==ESP_OK;
 }
 }
 

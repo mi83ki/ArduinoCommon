@@ -9,6 +9,7 @@
 
 #include <esp_system.h>
 #include <esp_netif.h>
+#include <lwip/dns.h>
 
 #include <algorithm>
 #include <cstring>
@@ -41,14 +42,17 @@ void invalidateLastSuccessfulAccessPoint() {
   lastSuccessfulAccessPoint.magic = 0;
 }
 
-/** @brief core 2系でゼロ指定が無視されるDNSを、未使用スロットから明示的に除去する。 */
+/** @brief IDFのゼロDNS拒否を避け、TCP/IPタスクで未使用DNSを同期的に解除する。 */
 bool clearUnusedDns(bool main, bool backup) {
-  esp_netif_t* netif=esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-  if(!netif)return false;
-  esp_netif_dns_info_t empty{};empty.ip.type=ESP_IPADDR_TYPE_V4;
-  if(main && esp_netif_set_dns_info(netif,ESP_NETIF_DNS_MAIN,&empty)!=ESP_OK)return false;
-  if(backup && esp_netif_set_dns_info(netif,ESP_NETIF_DNS_BACKUP,&empty)!=ESP_OK)return false;
-  return esp_netif_set_dns_info(netif,ESP_NETIF_DNS_FALLBACK,&empty)==ESP_OK;
+  if(!esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"))return false;
+  bool clear[]={main,backup};
+  return esp_netif_tcpip_exec([](void* context)->esp_err_t {
+    const auto* slots=static_cast<const bool*>(context);
+    if(slots[0])dns_setserver(ESP_NETIF_DNS_MAIN,nullptr);
+    if(slots[1])dns_setserver(ESP_NETIF_DNS_BACKUP,nullptr);
+    dns_setserver(ESP_NETIF_DNS_FALLBACK,nullptr);
+    return ESP_OK;
+  },clear)==ESP_OK;
 }
 
 }  // namespace
