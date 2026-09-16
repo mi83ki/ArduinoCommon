@@ -1,5 +1,6 @@
 #include <unity.h>
 #include "WiFi.h"
+#include "esp_netif.h"
 #include "provisioning/WiFiProvisioningProbe.h"
 
 using namespace ArduinoCommon;
@@ -14,9 +15,13 @@ void test_probe_connects_only_requested_profile_without_waiting() {
   TEST_ASSERT_FALSE(FakeProvisioning::state().persistent);TEST_ASSERT_FALSE(FakeProvisioning::state().autoReconnect);
   TEST_ASSERT_EQUAL(1,FakeProvisioning::state().clients);
   FakeWiFiState::setDirectResult("target",WL_CONNECTED,100);
+  FakeNetif::servers()={{0x09090909,0x01010101,0x08080808}};
   auto p=profile();const auto before=millis();TEST_ASSERT_TRUE(probe.start(p,41,before+20000));p.ssid="changed";
   TEST_ASSERT_EQUAL(before,millis());TEST_ASSERT_EQUAL(1,FakeWiFiState::beginCalls.size());
   TEST_ASSERT_EQUAL_STRING("target",FakeWiFiState::beginCalls[0].ssid.c_str());
+  TEST_ASSERT_TRUE(FakeWiFiState::configCalls.back().ip==IPAddress());
+  for(auto value:FakeNetif::servers())TEST_ASSERT_EQUAL(0,value);
+  TEST_ASSERT_FALSE(FakeNetif::unsafeDnsCall());
   TEST_ASSERT_FALSE(probe.start(profile(),42,millis()+20000));TEST_ASSERT_FALSE(probe.startScan());
   probe.poll();TEST_ASSERT_EQUAL(WiFiProbeState::Connecting,probe.result().state);
   fakeMillis+=100;probe.poll();TEST_ASSERT_EQUAL(WiFiProbeState::Succeeded,probe.result().state);
@@ -41,9 +46,13 @@ void test_probe_static_dns_and_overlapping_ap() {
   WiFiProvisioningProbe probe;TEST_ASSERT_TRUE(probe.begin(credentials));
   auto p=profile();p.staticIp=true;p.ip={{192,168,4,10}};p.gateway={{192,168,4,254}};
   p.mask={{255,255,255,0}};p.dns1={{1,1,1,1}};
+  FakeNetif::servers()={{0x09090909,0x08080808,0x04040404}};
   TEST_ASSERT_TRUE(probe.start(p,1,millis()+20000));
   TEST_ASSERT_FALSE(FakeProvisioning::state().ap);TEST_ASSERT_TRUE(probe.result().apSuspended);
   TEST_ASSERT_TRUE(FakeWiFiState::configCalls.back().dns1==IPAddress(1,1,1,1));
+  TEST_ASSERT_EQUAL_HEX32(0x01010101,FakeNetif::servers()[0]);
+  TEST_ASSERT_EQUAL(0,FakeNetif::servers()[1]);TEST_ASSERT_EQUAL(0,FakeNetif::servers()[2]);
+  TEST_ASSERT_FALSE(FakeNetif::unsafeDnsCall());
   TEST_ASSERT_TRUE(probe.cancel(1));TEST_ASSERT_TRUE(FakeProvisioning::state().ap);
   TEST_ASSERT_EQUAL_STRING(credentials.password.c_str(),FakeProvisioning::state().apPassword.c_str());
 }
@@ -62,6 +71,16 @@ void test_scan_is_bounded_cached_and_serialized() {
   fakeMillis+=30001;TEST_ASSERT_TRUE(probe.startScan());probe.stop();
   TEST_ASSERT_FALSE(FakeProvisioning::state().ap);TEST_ASSERT_GREATER_THAN(0,FakeProvisioning::state().scanStops);
 }
+/** @brief DNS解除失敗時は接続を開始せず、設定用APへ復帰する。 */
+void test_probe_dns_clear_failure_restores_ap() {
+  WiFiProvisioningProbe probe;TEST_ASSERT_TRUE(probe.begin(credentials));
+  FakeNetif::execFails()=true;
+  TEST_ASSERT_TRUE(probe.start(profile(),1,millis()+20000));
+  TEST_ASSERT_EQUAL(WiFiProbeState::Failed,probe.result().state);
+  TEST_ASSERT_EQUAL_STRING("network_config_failed",probe.result().error.c_str());
+  TEST_ASSERT_EQUAL(0,FakeWiFiState::beginCalls.size());TEST_ASSERT_TRUE(probe.apAvailable());
+}
 int main() {UNITY_BEGIN();RUN_TEST(test_probe_connects_only_requested_profile_without_waiting);
+  RUN_TEST(test_probe_dns_clear_failure_restores_ap);
   RUN_TEST(test_probe_timeout_cancel_and_late_result);RUN_TEST(test_probe_static_dns_and_overlapping_ap);
   RUN_TEST(test_scan_is_bounded_cached_and_serialized);return UNITY_END();}

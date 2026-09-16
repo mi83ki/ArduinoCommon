@@ -562,6 +562,10 @@ void test_explicit_dns_profiles() {
   TEST_ASSERT_TRUE(wifi.begin());
   TEST_ASSERT_TRUE(FakeWiFiState::configCalls.back().dns1==IPAddress(9,9,9,9));
   TEST_ASSERT_TRUE(FakeWiFiState::configCalls.back().dns2==IPAddress(1,1,1,1));
+  TEST_ASSERT_EQUAL_HEX32(0x09090909,FakeNetif::servers()[0]);
+  TEST_ASSERT_EQUAL_HEX32(0x01010101,FakeNetif::servers()[1]);
+  TEST_ASSERT_EQUAL(0,FakeNetif::servers()[2]);
+  TEST_ASSERT_FALSE(FakeNetif::unsafeDnsCall());
   TEST_ASSERT_TRUE(wifi.addAP("fallback","fallback-password","192.168.2.50","192.168.2.1","255.255.255.0","8.8.8.8","0.0.0.0"));
   TEST_ASSERT_FALSE(wifi.addAP("bad-dns","fallback-password","192.168.2.50","192.168.2.1","255.255.255.0",nullptr,"0.0.0.0"));
 }
@@ -573,6 +577,7 @@ void test_dhcp_reset_clears_static_dns() {
   wifi.setStaticIp("192.168.1.50","192.168.1.1","255.255.255.0","9.9.9.9","1.1.1.1");
   TEST_ASSERT_TRUE(wifi.begin());
   WiFi.disconnect(false,false);wifi.setDhcp();FakeNetif::dnsCalls().clear();
+  FakeNetif::servers()[2]=0x08080808;
   TEST_ASSERT_TRUE(wifi.begin());
   TEST_ASSERT_TRUE(FakeWiFiState::configCalls.back().ip==IPAddress(INADDR_NONE));
   bool main=false,backup=false;
@@ -581,6 +586,17 @@ void test_dhcp_reset_clears_static_dns() {
     if(call.type==ESP_NETIF_DNS_BACKUP && call.address==0)backup=true;
   }
   TEST_ASSERT_TRUE(main);TEST_ASSERT_TRUE(backup);
+  for(auto value:FakeNetif::servers())TEST_ASSERT_EQUAL(0,value);
+  TEST_ASSERT_FALSE(FakeNetif::unsafeDnsCall());
+}
+
+/** @brief DNS初期化に失敗した場合は古い設定のまま接続しない。 */
+void test_dns_clear_failure_prevents_connection() {
+  FakeNetif::execFails()=true;
+  FakeWiFiState::setDirectResult("primary",WL_CONNECTED);
+  WiFiESP32 wifi("primary","primary-password");
+  TEST_ASSERT_FALSE(wifi.begin());
+  TEST_ASSERT_EQUAL(0,FakeWiFiState::beginCalls.size());
 }
 
 /** @brief SSIDが同じでも秘密値・IP・DNSが変わったらRTC高速接続を使わない。 */
@@ -616,6 +632,7 @@ int main(int, char**) {
   RUN_TEST(test_connection_cycle_counter_and_configurable_retry_delay);
   RUN_TEST(test_explicit_dns_profiles);
   RUN_TEST(test_dhcp_reset_clears_static_dns);
+  RUN_TEST(test_dns_clear_failure_prevents_connection);
   RUN_TEST(test_rtc_cache_tracks_full_network_credentials);
   RUN_TEST(test_legacy_constructor_uses_primary_credentials);
   RUN_TEST(test_wifi_esp32_is_not_copyable);

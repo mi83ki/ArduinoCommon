@@ -6,6 +6,7 @@
 
 #include "WiFiMulti.h"
 #include "esp_system.h"
+#include "esp_netif.h"
 
 uint32_t fakeMillis = 0;
 FakeWiFiClass WiFi;
@@ -33,6 +34,7 @@ uint32_t nullAddressParseCalls = 0;
 esp_reset_reason_t resetReason = ESP_RST_POWERON;
 
 void reset() {
+  FakeNetif::reset();
   FakeProvisioning::state()=FakeProvisioning::State{};
   fakeMillis = 0;
   beginCalls.clear();
@@ -182,6 +184,12 @@ wl_status_t FakeWiFiClass::begin(const char* ssid, const char* password,
 bool FakeWiFiClass::config(IPAddress ip, IPAddress gateway, IPAddress subnet,
                            IPAddress dns1, IPAddress dns2) {
   FakeWiFiState::configCalls.push_back({ip, gateway, subnet, dns1, dns2});
+  const IPAddress values[]={dns1,dns2};
+  for(size_t i=0;i<2;++i) {
+    const auto& dns=values[i];
+    const uint32_t value=uint32_t(dns[0])|(uint32_t(dns[1])<<8)|(uint32_t(dns[2])<<16)|(uint32_t(dns[3])<<24);
+    if(value)FakeNetif::servers()[i]=value;
+  }
   return true;
 }
 
