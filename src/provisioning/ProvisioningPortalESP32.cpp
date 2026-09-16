@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <utility>
 
 namespace ArduinoCommon {
@@ -106,12 +107,23 @@ bool ProvisioningPortalESP32::begin(const ApCredentials& credentials,ApCredentia
   }
   return true;
 }
-/** @brief 接続元の申告ではなくaccepted socketの宛先IPv4を検証する。 */
+/** @brief accepted socketの宛先を検証し、dual-stackのIPv4-mapped AP宛ても扱う。 */
 bool ProvisioningPortalESP32::apSocket(int socket) const {
   if(!_probe.apAvailable())return false;
-  sockaddr_in destination{};socklen_t size=sizeof(destination);
-  return getsockname(socket,reinterpret_cast<sockaddr*>(&destination),&size)==0 &&
-      destination.sin_family==AF_INET && destination.sin_addr.s_addr==inet_addr(_host.c_str());
+  sockaddr_storage destination{};socklen_t size=sizeof(destination);
+  if(getsockname(socket,reinterpret_cast<sockaddr*>(&destination),&size)!=0)return false;
+  const auto expected=inet_addr(_host.c_str());
+  if(destination.ss_family==AF_INET) {
+    const auto* ipv4=reinterpret_cast<const sockaddr_in*>(&destination);
+    return size>=sizeof(sockaddr_in) && ipv4->sin_addr.s_addr==expected;
+  }
+  if(destination.ss_family==AF_INET6 && size>=sizeof(sockaddr_in6)) {
+    const auto* ipv6=reinterpret_cast<const sockaddr_in6*>(&destination);
+    const auto* bytes=reinterpret_cast<const uint8_t*>(&ipv6->sin6_addr);
+    for(unsigned i=0;i<10;++i)if(bytes[i]!=0)return false;
+    return bytes[10]==0xff && bytes[11]==0xff && std::memcmp(bytes+12,&expected,4)==0;
+  }
+  return false;
 }
 /** @brief HTTPヘッダーを読む前に、設置先LAN宛てのソケットを拒否する。 */
 esp_err_t ProvisioningPortalESP32::accept(httpd_handle_t handle,int socket) {
