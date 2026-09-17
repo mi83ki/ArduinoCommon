@@ -162,6 +162,7 @@ struct State {
   uint8_t mode=0;
   bool persistent=true,autoReconnect=true,ap=false,apSuccess=true;
   int apStarts=0,apStops=0,clients=0,scanResult=-1,scanStops=0;
+  uint32_t scanStarted=0,scanTimeout=10000;
   std::string apSsid,apPassword;
   IPAddress apAddress;
 };

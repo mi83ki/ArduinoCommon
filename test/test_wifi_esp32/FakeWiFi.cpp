@@ -202,9 +202,11 @@ bool FakeWiFiClass::disconnect(bool, bool) {
   return true;
 }
 
-int16_t FakeWiFiClass::scanNetworks(bool async, bool, bool, uint32_t, uint8_t,
+int16_t FakeWiFiClass::scanNetworks(bool async, bool, bool, uint32_t maxMsPerChannel, uint8_t,
                                     const char*, const uint8_t*) {
   ++FakeWiFiState::scanCalls;
+  FakeProvisioning::state().scanStarted=millis();
+  FakeProvisioning::state().scanTimeout=maxMsPerChannel*20;
   // スキャンは進行中の接続試行を中断する。
   _pendingActive = false;
   return async ? WIFI_SCAN_RUNNING : static_cast<int16_t>(configuredScanNetworks.size());
@@ -305,4 +307,8 @@ bool FakeWiFiClass::enableAP(bool enabled) {
   return true;
 }
 IPAddress FakeWiFiClass::subnetMask() {return IPAddress(255,255,255,0);}
-int16_t FakeWiFiClass::scanComplete() {return FakeProvisioning::state().scanResult;}
+int16_t FakeWiFiClass::scanComplete() {
+  const auto& scan=FakeProvisioning::state();
+  if(uint32_t(millis()-scan.scanStarted)>scan.scanTimeout)return WIFI_SCAN_FAILED;
+  return scan.scanResult;
+}

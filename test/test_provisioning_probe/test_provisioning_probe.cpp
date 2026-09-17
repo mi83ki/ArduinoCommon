@@ -80,7 +80,21 @@ void test_probe_dns_clear_failure_restores_ap() {
   TEST_ASSERT_EQUAL_STRING("network_config_failed",probe.result().error.c_str());
   TEST_ASSERT_EQUAL(0,FakeWiFiState::beginCalls.size());TEST_ASSERT_TRUE(probe.apAvailable());
 }
+/** @brief 固定SDKの6秒を超える検索結果を10秒以内で受理し、無期限には待たない。 */
+void test_scan_accepts_result_after_six_seconds_and_keeps_total_deadline() {
+  FakeWiFiState::addScanNetwork("target",-50,1,{{0,1,2,3,4,5}});
+  WiFiProvisioningProbe probe;TEST_ASSERT_TRUE(probe.begin(credentials));
+  TEST_ASSERT_TRUE(probe.startScan());
+  fakeMillis+=6500;probe.poll();TEST_ASSERT_EQUAL(WiFiScanState::Scanning,probe.scanState());
+  fakeMillis+=900;FakeProvisioning::state().scanResult=1;probe.poll();
+  TEST_ASSERT_EQUAL(WiFiScanState::Ready,probe.scanState());TEST_ASSERT_EQUAL(1,probe.scanResults().size());
+  fakeMillis+=30001;FakeProvisioning::state().scanResult=WIFI_SCAN_RUNNING;
+  TEST_ASSERT_TRUE(probe.startScan());fakeMillis+=10000;probe.poll();
+  TEST_ASSERT_EQUAL(WiFiScanState::Failed,probe.scanState());
+  TEST_ASSERT_GREATER_THAN(0,FakeProvisioning::state().scanStops);
+}
 int main() {UNITY_BEGIN();RUN_TEST(test_probe_connects_only_requested_profile_without_waiting);
+  RUN_TEST(test_scan_accepts_result_after_six_seconds_and_keeps_total_deadline);
   RUN_TEST(test_probe_dns_clear_failure_restores_ap);
   RUN_TEST(test_probe_timeout_cancel_and_late_result);RUN_TEST(test_probe_static_dns_and_overlapping_ap);
   RUN_TEST(test_scan_is_bounded_cached_and_serialized);return UNITY_END();}
