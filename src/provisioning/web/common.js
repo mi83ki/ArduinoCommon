@@ -121,7 +121,7 @@
         await this._client.request('/api/scan', {});
         for (let i = 0; i < 12; ++i) {
           await new Promise(resolve => setTimeout(resolve, 1000)); const result = await this._client.request('/api/scan');
-          if (result.state === 'failed') throw failure('検索できませんでした。接続試験の終了後に再度お試しください。');
+          if (result.state === 'failed') throw failure('Wi-Fiの検索を完了できませんでした。SSIDを直接入力することもできます。');
           if (result.state === 'ready') {
             this._networks = result.networks; this._showNetworks();
             this._scanMessage.textContent = result.networks.length + '件のWi-Fiが見つかりました。主Wi-Fi以外は保存時に接続確認しません。'; return;

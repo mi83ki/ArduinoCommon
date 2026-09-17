@@ -149,7 +149,8 @@ bool WiFiProvisioningProbe::startScan() {
   if(!_started || _stationOwned || _scanState==WiFiScanState::Scanning)return false;
   if(_scanState==WiFiScanState::Ready && uint32_t(millis()-_scanCompletedAt)<30000)return true;
   _scanResults.clear();_scanAt=millis();_scanState=WiFiScanState::Scanning;
-  if(WiFi.scanNetworks(true,true)==WIFI_SCAN_FAILED) {_scanState=WiFiScanState::Failed;return false;}
+  // 固定core 2.0.17はこの値×20で非同期検索期限を決める。標準300msでは6秒で打ち切られる。
+  if(WiFi.scanNetworks(true,true,false,500)==WIFI_SCAN_FAILED) {_scanState=WiFiScanState::Failed;return false;}
   return true;
 }
 WiFiScanState WiFiProvisioningProbe::scanState() const {return _scanState;}
