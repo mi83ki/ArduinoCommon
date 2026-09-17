@@ -41,7 +41,7 @@ const char* statusText(int status) {
     default:return "500 Internal Server Error";
   }
 }
-/** @brief キャッシュ・外部読込・埋込を禁止して応答する。 */
+/** @brief キャッシュ・外部読込・埋込を禁止し、close通知どおり応答後に接続を解放する。 */
 esp_err_t respond(httpd_req_t* request,int status,const char* body,size_t length,const char* type="application/json; charset=utf-8") {
   httpd_resp_set_status(request,statusText(status));httpd_resp_set_type(request,type);
   httpd_resp_set_hdr(request,"Cache-Control","no-store");
@@ -49,7 +49,9 @@ esp_err_t respond(httpd_req_t* request,int status,const char* body,size_t length
   httpd_resp_set_hdr(request,"Connection","close");
   httpd_resp_set_hdr(request,"Content-Security-Policy",
       "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
-  return httpd_resp_send(request,body,length);
+  httpd_resp_send(request,body,length);
+  // 固定IDFのHTTPDはESP_OKで接続を保持するため、本文送信後に終了を指示する。
+  return ESP_FAIL;
 }
 /** @brief 未読bodyを持つエラーでは接続も閉じて、次の要求へ混入させない。 */
 esp_err_t error(httpd_req_t* request,int status) {
