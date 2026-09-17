@@ -23,8 +23,8 @@
   class Client {
     constructor() { this._token = ''; }
     async init() { const response = await this.request('/api/session'); this._token = response.token; return response; }
-    async request(path, data) {
-      const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 5000);
+    async request(path, data, timeout = 5000) {
+      const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeout);
       const headers = {}; if (this._token) headers['X-Setup-Token'] = this._token;
       const options = { method: data === undefined ? 'GET' : 'POST', cache: 'no-store', credentials: 'omit', headers, signal: controller.signal };
       if (data !== undefined) {
@@ -39,7 +39,30 @@
           error.status = response.status; error.detail = value; throw error;
         }
         return value;
+      } catch (error) {
+        if (controller.signal.aborted || (!error.status && error.name === 'TypeError')) {
+          const message = controller.signal.aborted ? '端末の応答が待ち時間内に届きませんでした。接続を確認して再度お試しください。' :
+            '端末と通信できませんでした。BumbleEyeのWi-Fiへの接続を確認してください。';
+          const translated = failure(message); translated.retryable = true; throw translated;
+        }
+        throw error;
       } finally { clearTimeout(timer); }
+    }
+    async scanNetworks() {
+      const deadline = Date.now() + 20000;
+      // 開始POSTの応答が消えても二重に開始せず、結果GETだけを再試行する。
+      try { await this.request('/api/scan', {}); }
+      catch (error) { if (!error.retryable) throw error; }
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, Math.min(1000, deadline - Date.now())));
+        const remaining = deadline - Date.now(); if (remaining <= 0) break;
+        let result;
+        try { result = await this.request('/api/scan', undefined, Math.min(5000, remaining)); }
+        catch (error) { if (error.retryable) continue; throw error; }
+        if (result.state === 'ready') return result;
+        if (result.state === 'failed') throw failure('Wi-Fiの検索を完了できませんでした。SSIDを直接入力することもできます。');
+      }
+      throw failure('検索結果が待ち時間内に届きませんでした。接続を確認するか、SSIDを直接入力してください。');
     }
     operationId() {
       const values = new Uint8Array(16); crypto.getRandomValues(values);
@@ -118,16 +141,9 @@
     async _scanNetworks() {
       this._scan.disabled = true; this._scanMessage.textContent = 'Wi-Fiを探しています…';
       try {
-        await this._client.request('/api/scan', {});
-        for (let i = 0; i < 12; ++i) {
-          await new Promise(resolve => setTimeout(resolve, 1000)); const result = await this._client.request('/api/scan');
-          if (result.state === 'failed') throw failure('Wi-Fiの検索を完了できませんでした。SSIDを直接入力することもできます。');
-          if (result.state === 'ready') {
-            this._networks = result.networks; this._showNetworks();
-            this._scanMessage.textContent = result.networks.length + '件のWi-Fiが見つかりました。主Wi-Fi以外は保存時に接続確認しません。'; return;
-          }
-        }
-        throw failure('検索がタイムアウトしました。SSIDを直接入力することもできます。');
+        const result = await this._client.scanNetworks();
+        this._networks = result.networks; this._showNetworks();
+        this._scanMessage.textContent = result.networks.length + '件のWi-Fiが見つかりました。主Wi-Fi以外は保存時に接続確認しません。';
       } catch (error) { this._scanMessage.textContent = error.message; }
       finally { this._scan.disabled = false; }
     }

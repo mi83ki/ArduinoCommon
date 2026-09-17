@@ -94,7 +94,11 @@ void WiFiProvisioningProbe::fail(const char* error) {
 void WiFiProvisioningProbe::poll() {
   if(!_started)return;
   if(_scanState==WiFiScanState::Scanning) {
-    const int count=WiFi.scanComplete();
+    // IDFで開始した検索もArduinoの完了イベントが結果を保持する。未完了時は
+    // scanComplete()の古い開始時刻を参照せず、この所有者の総期限だけを使う。
+    const bool expired=uint32_t(millis()-_scanAt)>=10000;
+    const int count=expired?WIFI_SCAN_FAILED:
+        (WiFi.getStatusBits()&WIFI_SCAN_DONE_BIT)?WiFi.scanComplete():WIFI_SCAN_RUNNING;
     if(count>=0) {
       _scanResults.clear();
       for(int index=0;index<count && index<256;++index) {
@@ -149,8 +153,12 @@ bool WiFiProvisioningProbe::startScan() {
   if(!_started || _stationOwned || _scanState==WiFiScanState::Scanning)return false;
   if(_scanState==WiFiScanState::Ready && uint32_t(millis()-_scanCompletedAt)<30000)return true;
   _scanResults.clear();_scanAt=millis();_scanState=WiFiScanState::Scanning;
-  // 固定core 2.0.17はこの値×20で非同期検索期限を決める。標準300msでは6秒で打ち切られる。
-  if(WiFi.scanNetworks(true,true,false,500)==WIFI_SCAN_FAILED) {_scanState=WiFiScanState::Failed;return false;}
+  // 固定core 2.0.17のscanNetworksはhome_chan_dwell_timeを初期化しないため、
+  // IDFの公開APIへ全項目を初期化して渡す。非同期完了・結果保持はArduinoへ任せる。
+  WiFi.scanDelete();wifi_scan_config_t config{};
+  config.show_hidden=true;config.scan_type=WIFI_SCAN_TYPE_ACTIVE;
+  config.scan_time.active.min=100;config.scan_time.active.max=300;config.home_chan_dwell_time=30;
+  if(esp_wifi_scan_start(&config,false)!=ESP_OK) {_scanState=WiFiScanState::Failed;return false;}
   return true;
 }
 WiFiScanState WiFiProvisioningProbe::scanState() const {return _scanState;}
