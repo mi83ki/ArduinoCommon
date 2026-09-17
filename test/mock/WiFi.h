@@ -24,6 +24,7 @@ static const uint8_t WIFI_AP_STA = 3;
 static const uint8_t WIFI_OFF = 0;
 static const int WIFI_SCAN_RUNNING = -1;
 static const int WIFI_SCAN_FAILED = -2;
+static const int WIFI_SCAN_DONE_BIT = 1 << 12;
 static const uint32_t INADDR_NONE = 0;
 
 class WiFiClient {};
@@ -115,6 +116,7 @@ class FakeWiFiClass {
   bool enableAP(bool enabled);
   IPAddress subnetMask();
   int16_t scanComplete();
+  int getStatusBits();
   wl_status_t begin(const char* ssid, const char* password = nullptr,
                     int32_t channel = 0, const uint8_t* bssid = nullptr,
                     bool connect = true);

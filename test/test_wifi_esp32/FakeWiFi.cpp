@@ -312,3 +312,4 @@ int16_t FakeWiFiClass::scanComplete() {
   if(uint32_t(millis()-scan.scanStarted)>scan.scanTimeout)return WIFI_SCAN_FAILED;
   return scan.scanResult;
 }
+int FakeWiFiClass::getStatusBits() {return FakeProvisioning::state().scanResult>=0?WIFI_SCAN_DONE_BIT:0;}

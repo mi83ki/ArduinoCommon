@@ -1,10 +1,11 @@
 #include <unity.h>
 #include "WiFi.h"
 #include "esp_netif.h"
+#include "esp_wifi.h"
 #include "provisioning/WiFiProvisioningProbe.h"
 
 using namespace ArduinoCommon;
-void setUp() {FakeWiFiState::reset();}
+void setUp() {FakeWiFiState::reset();FakeScan::config()={};FakeScan::reject()=false;}
 void tearDown() {}
 WiFiProfile profile() {WiFiProfile p;p.id=2;p.ssid="target";p.password="password";return p;}
 ApCredentials credentials{"Example-A1B2C3","ABCDEFGHIJKLMNOPQRST"};
@@ -93,7 +94,24 @@ void test_scan_accepts_result_after_six_seconds_and_keeps_total_deadline() {
   TEST_ASSERT_EQUAL(WiFiScanState::Failed,probe.scanState());
   TEST_ASSERT_GREATER_THAN(0,FakeProvisioning::state().scanStops);
 }
+/** @brief APを維持した検索で滞在時間を制限し、全チャネル検索を非同期に要求する。 */
+void test_scan_bounds_radio_dwell_without_uninitialized_configuration() {
+  WiFiProvisioningProbe probe;TEST_ASSERT_TRUE(probe.begin(credentials));TEST_ASSERT_TRUE(probe.startScan());
+  const auto& config=FakeScan::config();
+  TEST_ASSERT_TRUE(config.ssid==nullptr&&config.bssid==nullptr);TEST_ASSERT_EQUAL(0,config.channel);
+  TEST_ASSERT_TRUE(config.show_hidden);TEST_ASSERT_EQUAL(WIFI_SCAN_TYPE_ACTIVE,config.scan_type);
+  TEST_ASSERT_EQUAL(100,config.scan_time.active.min);TEST_ASSERT_EQUAL(300,config.scan_time.active.max);
+  TEST_ASSERT_EQUAL(30,config.home_chan_dwell_time);TEST_ASSERT_FALSE(FakeScan::blocking());
+  TEST_ASSERT_TRUE(probe.apAvailable());
+}
+/** @brief ドライバが検索開始を拒否した場合は待機せず失敗を返す。 */
+void test_scan_start_rejection_does_not_wait_for_timeout() {
+  WiFiProvisioningProbe probe;TEST_ASSERT_TRUE(probe.begin(credentials));FakeScan::reject()=true;
+  TEST_ASSERT_FALSE(probe.startScan());TEST_ASSERT_EQUAL(WiFiScanState::Failed,probe.scanState());
+}
 int main() {UNITY_BEGIN();RUN_TEST(test_probe_connects_only_requested_profile_without_waiting);
+  RUN_TEST(test_scan_bounds_radio_dwell_without_uninitialized_configuration);
+  RUN_TEST(test_scan_start_rejection_does_not_wait_for_timeout);
   RUN_TEST(test_scan_accepts_result_after_six_seconds_and_keeps_total_deadline);
   RUN_TEST(test_probe_dns_clear_failure_restores_ap);
   RUN_TEST(test_probe_timeout_cancel_and_late_result);RUN_TEST(test_probe_static_dns_and_overlapping_ap);
