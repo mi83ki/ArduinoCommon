@@ -34,6 +34,9 @@
 
 # PlatformIO build output
 .pio/
+.venv/
+__pycache__/
+.pytest_cache/
 
 ### VisualStudioCode ###
 .vscode/*
