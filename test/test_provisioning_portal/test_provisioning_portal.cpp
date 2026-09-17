@@ -133,7 +133,26 @@ void test_portal_rejects_other_or_truncated_dual_stack_destinations() {
   TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
   TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),99));
 }
+/** @brief closeを通知した正常応答は本文を送り、SDKへ接続解放を指示する。 */
+void test_portal_closes_successful_response_connections() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  const uint8_t asset[]={31,139,0,1};
+  portal.addHandler(PortalMethod::Post,"/api/custom",[](const PortalRequest&){return PortalResponse{202,"{\"accepted\":true}"};});
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes,asset,sizeof(asset)));
+  for(const char* path:{"/","/api/session","/generate_204"}) {
+    auto r=request(path);
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::request(r));
+    TEST_ASSERT_EQUAL_STRING("200 OK",r.status.c_str());
+    TEST_ASSERT_EQUAL_STRING("close",r.responseHeaders["Connection"].c_str());
+    TEST_ASSERT_FALSE(r.response.empty());
+  }
+  auto post=request("/api/custom",HTTP_POST);
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::request(post));
+  TEST_ASSERT_EQUAL_STRING("202 Accepted",post.status.c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"accepted\":true}",post.response.c_str());
+}
 int main() {UNITY_BEGIN();RUN_TEST(test_portal_enforces_ap_host_origin_and_session);
+  RUN_TEST(test_portal_closes_successful_response_connections);
   RUN_TEST(test_portal_accepts_ipv4_mapped_ap_socket);
   RUN_TEST(test_portal_rejects_other_or_truncated_dual_stack_destinations);
   RUN_TEST(test_session_extension_preserves_portal_security);
