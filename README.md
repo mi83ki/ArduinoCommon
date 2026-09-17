@@ -5,6 +5,46 @@ Arduino / ESP32 向けの共通ライブラリ集です。
 
 ## 含まれるライブラリ
 
+## PlatformIO のソース選択
+
+`library.json` の extraScript が利用側の環境オプションを読み取ります。
+製品の `build_src_filter` でライブラリのソースを上書きする必要はありません。
+
+```ini
+[env:device]
+; platform / board / framework は製品に合わせて設定
+custom_arduinocommon_profile = scouter
+```
+
+| 値 | コンパイルするソース |
+| --- | --- |
+| 未指定 / legacy | Log、MQTTClientESP32、MacUtils、Menu、SleepHandler、Timer、WiFiESP32（0.6.0 の既定動作） |
+| scouter | Log、MacUtils、Timer、WiFiESP32、TCPClientESP32、NeoPixelArrayBase、Vibrator、TimedPatternPlayer |
+| kunai | scouter に Buzzer、Speaker、InfraredRemote、Filter、Menu を追加 |
+
+空文字を含む未知の値はビルドエラーです。製品用プロファイルは Arduino ESP32 用です。
+必要な外部依存は利用側で指定します（NeoPixel は FastLED、kunai の IR は IRremote）。
+既存 manifest の EEPROM/PubSubClient 依存は既定利用者のため維持します。
+scouter では Speaker/IR/MQTT のソースを選びませんが、依存取得の有無とは別です。
+全クラスが legacy でリンクできるわけではないため、表の対象外クラスを使う場合は
+対応するプロファイルを選択してください。
+
+Speaker は `SOC_DAC_SUPPORTED` の機種だけで利用できます。ESP32-S3 等で
+`Speaker.h` を明示 include すると `Speaker requires hardware DAC` エラーになります。
+DAC スタブは不要です。ESP32 の DAC 対応時の API は変更していません。
+
+設定テストは Python 3.10 以上と g++（プリプロセッサー検証用）が必要です。
+
+```sh
+uv run pytest
+pio test -e native -e native_mqtt
+```
+
+native は Wi-Fi/MQTT のモック試験です。ESP32 と ESP32-S3 の製品リンク試験、
+実機の DAC/LED/振動試験を代替しません。
+
+## クラス一覧
+
 ### Timer
 
 一定周期の判定や経過時間の取得を行うユーティリティです。

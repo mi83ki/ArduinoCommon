@@ -1,5 +1,13 @@
 #pragma once
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include <soc/soc_caps.h>
+#endif
+
+#if !defined(SOC_DAC_SUPPORTED) || !SOC_DAC_SUPPORTED
+#error "Speaker requires hardware DAC (SOC_DAC_SUPPORTED)"
+#else
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <driver/dac.h>
@@ -44,3 +52,5 @@ class Speaker : public Buzzer {
   uint8_t _initialVolume;
   bool _begun;
 };
+
+#endif

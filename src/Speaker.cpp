@@ -5,6 +5,8 @@
 
 #include "Speaker.h"
 
+#if defined(SOC_DAC_SUPPORTED) && SOC_DAC_SUPPORTED
+
 #include <Log.h>
 #include <string.h>
 
@@ -242,3 +244,5 @@ bool Speaker::takeRequest() {
 
   return false;
 }
+
+#endif
