@@ -1,3 +1,8 @@
+/**
+ * @file test_wifi_esp32.cpp
+ * @brief WiFiESP32の接続候補、固定IP、RTC復帰、再接続を検証するテスト。
+ */
+
 #include <unity.h>
 
 #include <array>
@@ -7,10 +12,12 @@
 #include "FakeLogState.h"
 #include "WiFi.h"
 #include "WiFiESP32.h"
+#include "esp_netif.h"
 
 void setUp(void) {
   FakeWiFiState::reset();
   FakeLogState::reset();
+  FakeNetif::dnsCalls().clear();
 }
 
 void tearDown(void) {}
@@ -551,8 +558,87 @@ void test_disconnect_does_not_reset_status_when_not_connected(void) {
   TEST_ASSERT_EQUAL_INT(WL_NO_SSID_AVAIL, WiFi.status());
 }
 
+/** @brief 主・予備プロファイルのDNSを引き継ぎ、不正な追加で既存設定を壊さない。 */
+void test_explicit_dns_profiles() {
+  FakeWiFiState::setDirectResult("primary",WL_CONNECTED);
+  WiFiESP32 wifi("primary","primary-password");
+  TEST_ASSERT_TRUE(wifi.setStaticIp("192.168.1.50","192.168.1.1","255.255.255.0","9.9.9.9","1.1.1.1"));
+  TEST_ASSERT_FALSE(wifi.setStaticIp("192.168.1.50","192.168.1.1","255.255.255.0","bad","1.1.1.1"));
+  TEST_ASSERT_TRUE(wifi.begin());
+  TEST_ASSERT_TRUE(FakeWiFiState::configCalls.back().dns1==IPAddress(9,9,9,9));
+  TEST_ASSERT_TRUE(FakeWiFiState::configCalls.back().dns2==IPAddress(1,1,1,1));
+  TEST_ASSERT_EQUAL_HEX32(0x09090909,FakeNetif::servers()[0]);
+  TEST_ASSERT_EQUAL_HEX32(0x01010101,FakeNetif::servers()[1]);
+  TEST_ASSERT_EQUAL(0,FakeNetif::servers()[2]);
+  TEST_ASSERT_FALSE(FakeNetif::unsafeDnsCall());
+  TEST_ASSERT_TRUE(wifi.addAP("fallback","fallback-password","192.168.2.50","192.168.2.1","255.255.255.0","8.8.8.8","0.0.0.0"));
+  TEST_ASSERT_FALSE(wifi.addAP("bad-dns","fallback-password","192.168.2.50","192.168.2.1","255.255.255.0",nullptr,"0.0.0.0"));
+}
+
+/** @brief DHCPへ戻す際は固定IPとDNS残存値をクリアする。 */
+void test_dhcp_reset_clears_static_dns() {
+  FakeWiFiState::setDirectResult("primary",WL_CONNECTED);
+  WiFiESP32 wifi("primary","primary-password");
+  wifi.setStaticIp("192.168.1.50","192.168.1.1","255.255.255.0","9.9.9.9","1.1.1.1");
+  TEST_ASSERT_TRUE(wifi.begin());
+  WiFi.disconnect(false,false);wifi.setDhcp();FakeNetif::dnsCalls().clear();
+  FakeNetif::servers()[2]=0x08080808;
+  TEST_ASSERT_TRUE(wifi.begin());
+  TEST_ASSERT_TRUE(FakeWiFiState::configCalls.back().ip==IPAddress(INADDR_NONE));
+  bool main=false,backup=false;
+  for(auto call:FakeNetif::dnsCalls()) {
+    if(call.type==ESP_NETIF_DNS_MAIN && call.address==0)main=true;
+    if(call.type==ESP_NETIF_DNS_BACKUP && call.address==0)backup=true;
+  }
+  TEST_ASSERT_TRUE(main);TEST_ASSERT_TRUE(backup);
+  for(auto value:FakeNetif::servers())TEST_ASSERT_EQUAL(0,value);
+  TEST_ASSERT_FALSE(FakeNetif::unsafeDnsCall());
+}
+
+/** @brief DNS初期化に失敗した場合は古い設定のまま接続しない。 */
+void test_dns_clear_failure_prevents_connection() {
+  FakeNetif::execFails()=true;
+  FakeWiFiState::setDirectResult("primary",WL_CONNECTED);
+  WiFiESP32 wifi("primary","primary-password");
+  TEST_ASSERT_FALSE(wifi.begin());
+  TEST_ASSERT_EQUAL(0,FakeWiFiState::beginCalls.size());
+}
+
+/** @brief SSIDが同じでも秘密値・IP・DNSが変わったらRTC高速接続を使わない。 */
+void test_rtc_cache_tracks_full_network_credentials() {
+  for(int changed=0;changed<3;++changed) {
+    FakeWiFiState::reset();FakeWiFiState::setDirectResult("primary",WL_CONNECTED);
+    {
+      WiFiESP32 old("primary","old-password");
+      old.setStaticIp("192.168.1.50","192.168.1.1","255.255.255.0","9.9.9.9","0.0.0.0");
+      TEST_ASSERT_TRUE(old.begin());
+    }
+    FakeWiFiState::reset();FakeWiFiState::resetReason=ESP_RST_DEEPSLEEP;
+    FakeWiFiState::setDirectResult("primary",WL_CONNECTED);
+    WiFiESP32 current("primary",changed==0?"new-password":"old-password");
+    current.setStaticIp(changed==1?"192.168.1.51":"192.168.1.50","192.168.1.1","255.255.255.0",changed==2?"1.1.1.1":"9.9.9.9","0.0.0.0");
+    TEST_ASSERT_TRUE(current.begin());
+    TEST_ASSERT_EQUAL(1,FakeWiFiState::beginCalls.size());
+    TEST_ASSERT_FALSE(FakeWiFiState::beginCalls.front().hasBssid);
+  }
+}
+
+/** @brief 再接続待ちを一巡失敗に数えず、製品指定の30秒間隔でだけ再試行する。 */
+void test_connection_cycle_counter_and_configurable_retry_delay() {
+  WiFiESP32 wifi("missing","password");wifi.setReconnectInterval(30000);
+  TEST_ASSERT_EQUAL(0,wifi.completedConnectionCycles());TEST_ASSERT_FALSE(wifi.begin());
+  TEST_ASSERT_EQUAL(1,wifi.completedConnectionCycles());const auto failedAt=millis();
+  delay(29999);TEST_ASSERT_FALSE(wifi.healthCheck());TEST_ASSERT_EQUAL(1,wifi.completedConnectionCycles());
+  delay(1);TEST_ASSERT_FALSE(wifi.healthCheck());TEST_ASSERT_EQUAL(2,wifi.completedConnectionCycles());
+  TEST_ASSERT_GREATER_OR_EQUAL(30000,millis()-failedAt);
+}
 int main(int, char**) {
   UNITY_BEGIN();
+  RUN_TEST(test_connection_cycle_counter_and_configurable_retry_delay);
+  RUN_TEST(test_explicit_dns_profiles);
+  RUN_TEST(test_dhcp_reset_clears_static_dns);
+  RUN_TEST(test_dns_clear_failure_prevents_connection);
+  RUN_TEST(test_rtc_cache_tracks_full_network_credentials);
   RUN_TEST(test_legacy_constructor_uses_primary_credentials);
   RUN_TEST(test_wifi_esp32_is_not_copyable);
   RUN_TEST(test_add_ap_registers_valid_fallback);

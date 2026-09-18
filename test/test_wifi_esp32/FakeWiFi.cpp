@@ -1,3 +1,8 @@
+/**
+ * @file FakeWiFi.cpp
+ * @brief WiFiESP32テスト用のWi-Fi状態・接続APIモックを実装する。
+ */
+
 #include "WiFi.h"
 
 #include <algorithm>
@@ -6,6 +11,7 @@
 
 #include "WiFiMulti.h"
 #include "esp_system.h"
+#include "esp_netif.h"
 
 uint32_t fakeMillis = 0;
 FakeWiFiClass WiFi;
@@ -33,6 +39,8 @@ uint32_t nullAddressParseCalls = 0;
 esp_reset_reason_t resetReason = ESP_RST_POWERON;
 
 void reset() {
+  FakeNetif::reset();
+  FakeProvisioning::state()=FakeProvisioning::State{};
   fakeMillis = 0;
   beginCalls.clear();
   configCalls.clear();
@@ -137,7 +145,8 @@ uint8_t IPAddress::operator[](size_t index) const { return _bytes[index]; }
 
 // 実機ではSTAの初回有効化だけがSTA_STARTイベントを発生させる。
 // 2回目以降のWiFi.mode(WIFI_STA)はステータスを変えない。
-void FakeWiFiClass::mode(uint8_t) {
+void FakeWiFiClass::mode(uint8_t mode) {
+  FakeProvisioning::state().mode=mode;
   ++FakeWiFiState::modeCalls;
   if (_staStarted) return;
   _staStarted = true;
@@ -178,8 +187,14 @@ wl_status_t FakeWiFiClass::begin(const char* ssid, const char* password,
 }
 
 bool FakeWiFiClass::config(IPAddress ip, IPAddress gateway, IPAddress subnet,
-                           IPAddress, IPAddress) {
-  FakeWiFiState::configCalls.push_back({ip, gateway, subnet});
+                           IPAddress dns1, IPAddress dns2) {
+  FakeWiFiState::configCalls.push_back({ip, gateway, subnet, dns1, dns2});
+  const IPAddress values[]={dns1,dns2};
+  for(size_t i=0;i<2;++i) {
+    const auto& dns=values[i];
+    const uint32_t value=uint32_t(dns[0])|(uint32_t(dns[1])<<8)|(uint32_t(dns[2])<<16)|(uint32_t(dns[3])<<24);
+    if(value)FakeNetif::servers()[i]=value;
+  }
   return true;
 }
 
@@ -192,12 +207,14 @@ bool FakeWiFiClass::disconnect(bool, bool) {
   return true;
 }
 
-int16_t FakeWiFiClass::scanNetworks(bool, bool, bool, uint32_t, uint8_t,
+int16_t FakeWiFiClass::scanNetworks(bool async, bool, bool, uint32_t maxMsPerChannel, uint8_t,
                                     const char*, const uint8_t*) {
   ++FakeWiFiState::scanCalls;
+  FakeProvisioning::state().scanStarted=millis();
+  FakeProvisioning::state().scanTimeout=maxMsPerChannel*20;
   // スキャンは進行中の接続試行を中断する。
   _pendingActive = false;
-  return static_cast<int16_t>(configuredScanNetworks.size());
+  return async ? WIFI_SCAN_RUNNING : static_cast<int16_t>(configuredScanNetworks.size());
 }
 
 bool FakeWiFiClass::getNetworkInfo(uint8_t networkItem, String& ssid,
@@ -277,3 +294,27 @@ uint8_t WiFiMulti::run(uint32_t connectTimeout) {
 esp_reset_reason_t esp_reset_reason() {
   return FakeWiFiState::resetReason;
 }
+
+void FakeWiFiClass::persistent(bool value) {FakeProvisioning::state().persistent=value;}
+bool FakeWiFiClass::setAutoReconnect(bool value) {FakeProvisioning::state().autoReconnect=value;return true;}
+bool FakeWiFiClass::softAP(const char* ssid,const char* password,int,int,int clients) {
+  auto& state=FakeProvisioning::state();state.ap=state.apSuccess;state.apSsid=ssid;state.apPassword=password;
+  ++state.apStarts;state.clients=clients;return state.apSuccess;
+}
+bool FakeWiFiClass::softAPConfig(IPAddress ip,IPAddress,IPAddress) {FakeProvisioning::state().apAddress=ip;return true;}
+bool FakeWiFiClass::softAPdisconnect(bool off) {
+  auto& s=FakeProvisioning::state();if(off)s.ap=false;
+  s.apSsid="default";s.apPassword="";++s.apStops;return true;
+}
+bool FakeWiFiClass::enableAP(bool enabled) {
+  auto& s=FakeProvisioning::state();s.ap=enabled;
+  if(enabled)s.mode|=2;else {s.mode&=~2;++s.apStops;}
+  return true;
+}
+IPAddress FakeWiFiClass::subnetMask() {return IPAddress(255,255,255,0);}
+int16_t FakeWiFiClass::scanComplete() {
+  const auto& scan=FakeProvisioning::state();
+  if(uint32_t(millis()-scan.scanStarted)>scan.scanTimeout)return WIFI_SCAN_FAILED;
+  return scan.scanResult;
+}
+int FakeWiFiClass::getStatusBits() {return FakeProvisioning::state().scanResult>=0?WIFI_SCAN_DONE_BIT:0;}

@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wi-Fi設定</title><style>{{COMMON_CSS}}</style></head>
+<body><main><p class="hint">ArduinoCommon • Wi-Fi設定サンプル</p><h1>デバイスの接続設定</h1><p class="lead">表示名と接続先を設定します。Wi-Fiにつながったことを確認してから保存します。</p>
+<form id="setup-form"><fieldset><legend>このデバイス</legend><div id="application-fields"></div></fieldset><fieldset id="networks"></fieldset>
+<p class="hint">接続確認中にスマホのWi-Fiが切れる場合があります。その場合はデバイスのWi-Fiへ接続し直し、http://192.168.4.1 を開いてください。</p>
+<div class="actions"><button id="save" class="primary" type="submit">接続を確認して保存</button><button id="cancel" type="button" hidden>接続確認を取り消す</button></div></form>
+<div id="status" class="panel"></div></main><script>{{COMMON_JS}}</script><script>{{APPLICATION_JS}}</script></body></html>

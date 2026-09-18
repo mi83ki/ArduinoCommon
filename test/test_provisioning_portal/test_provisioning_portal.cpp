@@ -1,0 +1,166 @@
+/**
+ * @file test_provisioning_portal.cpp
+ * @brief プロビジョニングHTTPポータルの認証・入力制限・停止処理を検証するテスト。
+ */
+
+#include <unity.h>
+#include "provisioning/ProvisioningPortalESP32.h"
+#include "lwip/sockets.h"
+
+using namespace ArduinoCommon;
+void setUp() {FakeWiFiState::reset();FakeSockets::destinations().clear();FakeSockets::reportedSizes().clear();FakeSockets::destinations()[1]="192.168.4.1";}
+void tearDown() {}
+ApCredentials credentials{"Example-A1B2C3","ABCDEFGHIJKLMNOPQRST"};
+bool randomBytes(uint8_t* bytes,size_t length) {std::memset(bytes,0xab,length);return true;}
+httpd_req_t request(const char* path,httpd_method_t method=HTTP_GET) {
+  httpd_req_t r;r.uri=path;r.method=method;r.headers["Host"]="192.168.4.1";
+  r.headers["X-Setup-Token"]=std::string(32,'a');
+  r.headers["X-Setup-Token"]="abababababababababababababababab";
+  if(method==HTTP_POST) {r.body="{}";r.content_len=2;r.headers["Content-Type"]="application/json";}
+  return r;
+}
+/** @brief AP宛てのsessionだけがtokenを取得でき、全登録APIへ同じ検証を適用する。 */
+void test_portal_enforces_ap_host_origin_and_session() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);int calls=0;
+  TEST_ASSERT_TRUE(portal.addHandler(PortalMethod::Post,"/api/custom",[&](const PortalRequest& r){++calls;return PortalResponse{200,r.body};}));
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  TEST_ASSERT_EQUAL(2,FakeHttp::state().config.max_open_sockets);TEST_ASSERT_EQUAL(24,FakeHttp::state().config.max_uri_handlers);
+  auto session=request("/api/session");session.headers.erase("X-Setup-Token");FakeHttp::request(session);
+  TEST_ASSERT_EQUAL_STRING("200 OK",session.status.c_str());TEST_ASSERT_TRUE(session.response.find("abababababababababababababababab")!=std::string::npos);
+  TEST_ASSERT_TRUE(session.response.find(credentials.password)==std::string::npos);
+  for(int mode=0;mode<4;++mode) {
+    auto r=request("/api/custom",HTTP_POST);
+    if(mode==0)r.headers["Host"]="attacker.example";
+    if(mode==1)r.headers["Origin"]="https://attacker.example";
+    if(mode==2)r.headers["X-Setup-Token"]="wrong";
+    if(mode==3)FakeSockets::destinations()[1]="192.168.1.50";
+    FakeHttp::request(r);TEST_ASSERT_EQUAL_STRING("403 Forbidden",r.status.c_str());TEST_ASSERT_EQUAL(0,r.recvCalls);
+    FakeSockets::destinations()[1]="192.168.4.1";
+  }
+  TEST_ASSERT_EQUAL(0,calls);auto good=request("/api/custom",HTTP_POST);FakeHttp::request(good);TEST_ASSERT_EQUAL(1,calls);
+  TEST_ASSERT_EQUAL_STRING("no-store",good.responseHeaders["Cache-Control"].c_str());
+  FakeSockets::destinations()[1]="192.168.1.50";
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+}
+/** @brief body上限は読込前に拒否し、総受信期限と途中切断では製品処理を実行しない。 */
+void test_portal_body_limits_and_deadlines() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);int calls=0;
+  portal.addHandler(PortalMethod::Post,"/api/custom",[&](const PortalRequest&){++calls;return PortalResponse{};});
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  auto large=request("/api/custom",HTTP_POST);large.content_len=4097;FakeHttp::request(large);
+  TEST_ASSERT_EQUAL_STRING("413 Payload Too Large",large.status.c_str());TEST_ASSERT_EQUAL(0,large.recvCalls);
+  auto slow=request("/api/custom",HTTP_POST);slow.body=std::string(4,'x');slow.content_len=4;slow.chunk=1;slow.recvDelay=1100;
+  FakeHttp::request(slow);TEST_ASSERT_EQUAL_STRING("408 Request Timeout",slow.status.c_str());
+  auto broken=request("/api/custom",HTTP_POST);broken.disconnect=true;FakeHttp::request(broken);
+  TEST_ASSERT_EQUAL_STRING("400 Bad Request",broken.status.c_str());
+  auto wrong=request("/api/custom",HTTP_POST);wrong.headers["Content-Type"]="text/plain";FakeHttp::request(wrong);
+  TEST_ASSERT_EQUAL_STRING("415 Unsupported Media Type",wrong.status.c_str());TEST_ASSERT_EQUAL(0,calls);
+}
+/** @brief CNAは案内だけ、gzipは指定長で配信し、HTTP中の停止要求を所有タスクへ渡す。 */
+void test_portal_cna_asset_and_deferred_stop() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  const uint8_t asset[]={31,139,0,1};
+  portal.addHandler(PortalMethod::Post,"/api/stop",[&](const PortalRequest&){portal.requestStop();return PortalResponse{202,"{}"};});
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes,asset,sizeof(asset)));
+  auto cna=request("/hotspot-detect.html");cna.headers["Host"]="captive.apple.com";FakeHttp::request(cna);
+  TEST_ASSERT_TRUE(cna.response.find("http://192.168.4.1")!=std::string::npos);
+  TEST_ASSERT_TRUE(cna.response.find("Safari")!=std::string::npos);TEST_ASSERT_TRUE(cna.response.find("abababab")==std::string::npos);
+  auto root=request("/");FakeHttp::request(root);TEST_ASSERT_EQUAL(4,root.response.size());
+  TEST_ASSERT_EQUAL_MEMORY(asset,root.response.data(),4);TEST_ASSERT_EQUAL_STRING("gzip",root.responseHeaders["Content-Encoding"].c_str());
+  auto stop=request("/api/stop",HTTP_POST);FakeHttp::request(stop);TEST_ASSERT_TRUE(portal.running());
+  TEST_ASSERT_EQUAL(0,FakeHttp::state().stops);portal.tick();TEST_ASSERT_FALSE(portal.running());
+  TEST_ASSERT_FALSE(FakeDns::running());TEST_ASSERT_FALSE(FakeProvisioning::state().ap);
+}
+/** @brief スキャンはHTTPから開始せず、結果JSONのSSID特殊文字を正しくエスケープする。 */
+void test_portal_scan_is_queued_and_json_escaped() {
+  FakeWiFiState::addScanNetwork("quote\"slash\\",-50,1,{{0,1,2,3,4,5}});
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  auto scan=request("/api/scan",HTTP_POST);FakeHttp::request(scan);TEST_ASSERT_EQUAL_STRING("202 Accepted",scan.status.c_str());
+  TEST_ASSERT_EQUAL(0,FakeWiFiState::scanCalls);portal.tick();TEST_ASSERT_EQUAL(1,FakeWiFiState::scanCalls);
+  FakeProvisioning::state().scanResult=1;portal.tick();
+  auto result=request("/api/scan");FakeHttp::request(result);
+  TEST_ASSERT_TRUE(result.response.find("quote\\\"slash\\\\")!=std::string::npos);
+  fakeMillis+=1000;const auto activity=portal.lastActivityMillis();FakeHttp::request(result);
+  TEST_ASSERT_EQUAL(activity,portal.lastActivityMillis());
+}
+/** @brief AP停止中は、STAのIPが設定用IPと同じでもAPIアクセスを許可しない。 */
+void test_portal_rejects_suspended_ap_even_for_matching_local_ip() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  WiFiProfile p;p.ssid="overlap";p.password="password";p.staticIp=true;
+  p.ip={{192,168,4,1}};p.gateway={{192,168,4,254}};p.mask={{255,255,255,0}};
+  TEST_ASSERT_TRUE(probe.start(p,1,millis()+20000));
+  auto session=request("/api/session");FakeHttp::request(session);
+  TEST_ASSERT_EQUAL_STRING("403 Forbidden",session.status.c_str());
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+}
+/** @brief 製品sessionは認証境界の内側でだけ生成され、起動後の差替えを禁止する。 */
+void test_session_extension_preserves_portal_security() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);int calls=0;
+  TEST_ASSERT_TRUE(portal.setSessionHandler([&](const std::string& token) {
+    ++calls;return PortalResponse{200,"{\"token\":\""+token+"\",\"revision\":7}"};
+  }));
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  TEST_ASSERT_FALSE(portal.setSessionHandler({}));
+  auto bad=request("/api/session");bad.headers["Host"]="wrong";FakeHttp::request(bad);TEST_ASSERT_EQUAL(0,calls);
+  auto good=request("/api/session");good.headers.erase("X-Setup-Token");FakeHttp::request(good);
+  TEST_ASSERT_EQUAL(1,calls);TEST_ASSERT_TRUE(good.response.find("\"revision\":7")!=std::string::npos);
+  TEST_ASSERT_TRUE(good.response.find("abababababababababababababababab")!=std::string::npos);
+}
+/** @brief SDKのdual-stackソケットでも、AP宛てのIPv4-mapped接続は設定画面とAPIへ到達する。 */
+void test_portal_accepts_ipv4_mapped_ap_socket() {
+  FakeSockets::destinations()[1]="::ffff:192.168.4.1";
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  const uint8_t asset[]={31,139,0,1};
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes,asset,sizeof(asset)));
+  TEST_ASSERT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+  auto root=request("/");FakeHttp::request(root);
+  TEST_ASSERT_EQUAL_STRING("200 OK",root.status.c_str());TEST_ASSERT_EQUAL_MEMORY(asset,root.response.data(),4);
+  auto session=request("/api/session");session.headers.erase("X-Setup-Token");FakeHttp::request(session);
+  TEST_ASSERT_EQUAL_STRING("200 OK",session.status.c_str());
+  TEST_ASSERT_TRUE(session.response.find("abababababababababababababababab")!=std::string::npos);
+}
+/** @brief mapped形式でもLAN宛て・純IPv6・不完全なアドレスはヘッダー処理前に拒否する。 */
+void test_portal_rejects_other_or_truncated_dual_stack_destinations() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes));
+  for(const char* destination:{"::ffff:192.168.1.50","2001:db8::1"}) {
+    FakeSockets::destinations()[1]=destination;
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+    auto session=request("/api/session");FakeHttp::request(session);
+    TEST_ASSERT_EQUAL_STRING("403 Forbidden",session.status.c_str());
+  }
+  FakeSockets::destinations()[1]="::ffff:192.168.4.1";
+  FakeSockets::reportedSizes()[1]=sizeof(sockaddr_in6)-1;
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+  FakeSockets::destinations()[1]="192.168.4.1";
+  FakeSockets::reportedSizes()[1]=sizeof(sockaddr_in)-1;
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),1));
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::state().config.open_fn(&FakeHttp::state(),99));
+}
+/** @brief closeを通知した正常応答は本文を送り、SDKへ接続解放を指示する。 */
+void test_portal_closes_successful_response_connections() {
+  WiFiProvisioningProbe probe;ProvisioningPortalESP32 portal(probe);
+  const uint8_t asset[]={31,139,0,1};
+  portal.addHandler(PortalMethod::Post,"/api/custom",[](const PortalRequest&){return PortalResponse{202,"{\"accepted\":true}"};});
+  TEST_ASSERT_TRUE(portal.begin(credentials,randomBytes,asset,sizeof(asset)));
+  for(const char* path:{"/","/api/session","/generate_204"}) {
+    auto r=request(path);
+    TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::request(r));
+    TEST_ASSERT_EQUAL_STRING("200 OK",r.status.c_str());
+    TEST_ASSERT_EQUAL_STRING("close",r.responseHeaders["Connection"].c_str());
+    TEST_ASSERT_FALSE(r.response.empty());
+  }
+  auto post=request("/api/custom",HTTP_POST);
+  TEST_ASSERT_NOT_EQUAL(ESP_OK,FakeHttp::request(post));
+  TEST_ASSERT_EQUAL_STRING("202 Accepted",post.status.c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"accepted\":true}",post.response.c_str());
+}
+int main() {UNITY_BEGIN();RUN_TEST(test_portal_enforces_ap_host_origin_and_session);
+  RUN_TEST(test_portal_closes_successful_response_connections);
+  RUN_TEST(test_portal_accepts_ipv4_mapped_ap_socket);
+  RUN_TEST(test_portal_rejects_other_or_truncated_dual_stack_destinations);
+  RUN_TEST(test_session_extension_preserves_portal_security);
+  RUN_TEST(test_portal_rejects_suspended_ap_even_for_matching_local_ip);
+  RUN_TEST(test_portal_body_limits_and_deadlines);RUN_TEST(test_portal_cna_asset_and_deferred_stop);
+  RUN_TEST(test_portal_scan_is_queued_and_json_escaped);return UNITY_END();}
