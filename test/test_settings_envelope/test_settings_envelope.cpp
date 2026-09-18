@@ -1,3 +1,8 @@
+/**
+ * @file test_settings_envelope.cpp
+ * @brief 設定レコードの固定形式、CRC、schema検証を検証するテスト。
+ */
+
 #include <unity.h>
 #include "settings/RecordEnvelopeCodec.h"
 

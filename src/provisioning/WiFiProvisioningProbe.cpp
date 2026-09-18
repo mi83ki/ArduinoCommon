@@ -1,3 +1,8 @@
+/**
+ * @file WiFiProvisioningProbe.cpp
+ * @brief 設定用APを維持しながらWi-Fi接続試験とスキャンを実行する実装。
+ */
+
 #if !defined(ARDUINOCOMMON_DISABLE_PROVISIONING) && (defined(ARDUINO_ARCH_ESP32) || defined(ARDUINOCOMMON_TEST_ESP32))
 #include "WiFiProvisioningProbe.h"
 #include <WiFi.h>
@@ -8,10 +13,26 @@
 
 namespace ArduinoCommon {
 namespace {
-/** @brief SDKのIP型へネットワーク順で変換する。 */
+/**
+ * @brief SDKのIP型へネットワーク順で変換する。
+ * @param ip 変換する4バイトIPv4アドレス
+ * @return IPAddress SDKのIPアドレスオブジェクト
+ */
 IPAddress ipAddress(const IPv4& ip) {return IPAddress(ip[0],ip[1],ip[2],ip[3]);}
+/**
+ * @brief SDKのIP型を4バイトのIPv4値へ変換する。
+ * @param ip 変換するSDKのIPアドレス
+ * @return IPv4 4バイトのIPv4アドレス
+ */
 IPv4 bytes(const IPAddress& ip) {return {{ip[0],ip[1],ip[2],ip[3]}};}
-/** @brief APの/24とSTAのサブネットが重なるかを判定する。 */
+/**
+ * @brief APの/24とSTAのサブネットが重なるかを判定する。
+ * @param ap 設定用APのIPv4アドレス
+ * @param sta STA側のIPv4アドレス
+ * @param mask STA側のサブネットマスク
+ * @return true 両者のネットワークが重なる場合
+ * @return false 重ならない場合
+ */
 bool overlaps(const IPv4& ap,const IPv4& sta,const IPv4& mask) {
   for(size_t i=0;i<4;++i) {
     const uint8_t common=mask[i] & (i<3?255:0);
@@ -19,7 +40,13 @@ bool overlaps(const IPv4& ap,const IPv4& sta,const IPv4& mask) {
   }
   return true;
 }
-/** @brief IDFのゼロDNS拒否を避け、TCP/IPタスクで未使用DNSを同期的に解除する。 */
+/**
+ * @brief IDFのゼロDNS拒否を避け、TCP/IPタスクで未使用DNSを同期的に解除する。
+ * @param first DNS1を解除する場合はtrue
+ * @param second DNS2を解除する場合はtrue
+ * @return true DNSを解除できた場合
+ * @return false STAインターフェースまたはTCP/IP処理を取得できない場合
+ */
 bool clearDns(bool first,bool second) {
   if(!esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"))return false;
   bool clear[]={first,second};
@@ -33,7 +60,13 @@ bool clearDns(bool first,bool second) {
 }
 }
 
-/** @brief 設定用APを開始する。通常WiFiESP32と並行せず、同一所有タスクから呼ぶ。 */
+/**
+ * @brief 設定用APを開始する。通常WiFiESP32と並行せず、同一所有タスクから呼ぶ。
+ * @param credentials 設定用APの認証情報
+ * @param apAddress 設定用APに割り当てるIPv4アドレス
+ * @return true APを開始できた場合
+ * @return false 引数またはAP初期化が不正な場合
+ */
 bool WiFiProvisioningProbe::begin(const ApCredentials& credentials,IPv4 apAddress) {
   if(_started || credentials.ssid.empty() || credentials.ssid.size()>31 ||
       !WiFiProfileValidator::validUtf8(credentials.ssid) || credentials.password.size()<8 ||
@@ -43,7 +76,11 @@ bool WiFiProvisioningProbe::begin(const ApCredentials& credentials,IPv4 apAddres
   WiFi.disconnect(false,false);
   _started=restoreAp();return _started;
 }
-/** @brief 同じ資格情報と固定アドレスでAPを復帰する。 */
+/**
+ * @brief 同じ資格情報と固定アドレスでAPを復帰する。
+ * @return true APを復帰できた場合
+ * @return false AP設定または開始に失敗した場合
+ */
 bool WiFiProvisioningProbe::restoreAp() {
   _apAvailable=false;
   WiFi.mode(WIFI_AP_STA);
@@ -59,7 +96,14 @@ void WiFiProvisioningProbe::stop() {
   WiFi.scanDelete();WiFi.disconnect(false,false);WiFi.softAPdisconnect(true);WiFi.mode(WIFI_OFF);
   _started=false;_stationOwned=false;_scanState=WiFiScanState::Idle;_scanResults.clear();_result={};
 }
-/** @brief 指定SSIDだけを非同期に試験する。deadlineはmillis基準で最大20秒先とする。 */
+/**
+ * @brief 指定SSIDだけを非同期に試験する。deadlineはmillis基準で最大20秒先とする。
+ * @param profile 接続試験するWi-Fiプロファイル
+ * @param jobId 試験を識別するジョブID。0は無効
+ * @param deadlineMillis 試験を終了する絶対時刻
+ * @return true 試験を開始できた場合
+ * @return false 既存試験中、期限不正、またはプロファイル不正の場合
+ */
 bool WiFiProvisioningProbe::start(const WiFiProfile& profile,uint64_t jobId,uint32_t deadlineMillis) {
   const uint32_t timeout=deadlineMillis-millis();
   if(!_started || _stationOwned || _scanState==WiFiScanState::Scanning || !jobId ||
@@ -84,7 +128,10 @@ bool WiFiProvisioningProbe::start(const WiFiProfile& profile,uint64_t jobId,uint
   WiFi.begin(_profile.ssid.c_str(),_profile.password.empty()?nullptr:_profile.password.c_str());
   return true;
 }
-/** @brief 試験失敗時はSTAを解除し、候補結果を保持したままAPへ戻す。 */
+/**
+ * @brief 試験失敗時はSTAを解除し、候補結果を保持したままAPへ戻す。
+ * @param error 失敗理由を表す内部コード
+ */
 void WiFiProvisioningProbe::fail(const char* error) {
   _result.state=WiFiProbeState::Failed;_result.error=error;
   WiFi.disconnect(false,false);_stationOwned=false;
@@ -130,25 +177,46 @@ void WiFiProvisioningProbe::poll() {
   }
   _result.address=address;_result.state=WiFiProbeState::Succeeded;
 }
-/** @brief ジョブIDが一致する試験だけを取り消し、遅い結果の採用を防ぐ。 */
+/**
+ * @brief ジョブIDが一致する試験だけを取り消し、遅い結果の採用を防ぐ。
+ * @param jobId 取り消す試験のジョブID
+ * @return true 試験を取り消した場合
+ * @return false 対象ジョブが存在しない、または試験中でない場合
+ */
 bool WiFiProvisioningProbe::cancel(uint64_t jobId) {
   if(!_stationOwned || _result.jobId!=jobId)return false;
   WiFi.disconnect(false,false);_stationOwned=false;_result.state=WiFiProbeState::Cancelled;
   if(!restoreAp()) {_result.state=WiFiProbeState::Failed;_result.error="ap_restore_failed";}
   return true;
 }
-/** @brief 利用側の診断終了後、STAを停止してAPを復帰する。 */
+/**
+ * @brief 利用側の診断終了後、STAを停止してAPを復帰する。
+ * @param jobId 終了する試験のジョブID
+ * @return true 試験を終了してAPを復帰できた場合
+ * @return false 対象ジョブが未完了、または復帰に失敗した場合
+ */
 bool WiFiProvisioningProbe::finish(uint64_t jobId) {
   if(!_stationOwned || _result.jobId!=jobId || _result.state==WiFiProbeState::Connecting)return false;
   WiFi.disconnect(false,false);_stationOwned=false;
   if(!restoreAp()) {_result.error="ap_restore_failed";return false;}
   return true;
 }
-/** @brief 結果を所有コピーで返す。公開APIの呼出しは同一所有タスクへ直列化する。 */
+/**
+ * @brief 結果を所有コピーで返す。公開APIの呼出しは同一所有タスクへ直列化する。
+ * @return WiFiProbeResult 現在の接続試験結果
+ */
 WiFiProbeResult WiFiProvisioningProbe::result() const {return _result;}
-/** @brief HTTP側からSDKに触れず、APが利用できるかを原子的に確認する。 */
+/**
+ * @brief HTTP側からSDKに触れず、APが利用できるかを原子的に確認する。
+ * @return true 設定用APが利用可能な場合
+ * @return false APが停止中または利用不能な場合
+ */
 bool WiFiProvisioningProbe::apAvailable() const {return _apAvailable;}
-/** @brief 接続試験中のスキャンを拒否し、30秒以内の結果は再利用する。 */
+/**
+ * @brief 接続試験中のスキャンを拒否し、30秒以内の結果は再利用する。
+ * @return true スキャンを開始した、または有効なキャッシュを再利用した場合
+ * @return false スキャンを開始できない場合
+ */
 bool WiFiProvisioningProbe::startScan() {
   if(!_started || _stationOwned || _scanState==WiFiScanState::Scanning)return false;
   if(_scanState==WiFiScanState::Ready && uint32_t(millis()-_scanCompletedAt)<30000)return true;
@@ -161,7 +229,15 @@ bool WiFiProvisioningProbe::startScan() {
   if(esp_wifi_scan_start(&config,false)!=ESP_OK) {_scanState=WiFiScanState::Failed;return false;}
   return true;
 }
+/**
+ * @brief Wi-Fiスキャンの現在状態を返す。
+ * @return WiFiScanState 現在のスキャン状態
+ */
 WiFiScanState WiFiProvisioningProbe::scanState() const {return _scanState;}
+/**
+ * @brief 最新スキャン結果を呼出元へ所有コピーで返す。
+ * @return std::vector<WiFiScanEntry> SSIDごとに整理したスキャン結果
+ */
 std::vector<WiFiScanEntry> WiFiProvisioningProbe::scanResults() const {return _scanResults;}
 }
 #endif

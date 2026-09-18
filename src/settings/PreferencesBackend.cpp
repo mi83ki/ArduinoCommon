@@ -1,3 +1,8 @@
+/**
+ * @file PreferencesBackend.cpp
+ * @brief Arduino-ESP32 Preferences/NVSを設定バックエンドとして扱う実装。
+ */
+
 #include "PreferencesBackend.h"
 
 #if defined(ARDUINO_ARCH_ESP32) || defined(ARDUINOCOMMON_TEST_ESP32)
@@ -8,7 +13,12 @@
 namespace ArduinoCommon {
 namespace {
 
-/** @brief NVSで利用するASCII名を、アクセス前に検証する。 */
+/**
+ * @brief NVSで利用するASCII名を、アクセス前に検証する。
+ * @param name 検証するnamespaceまたはキー名
+ * @return true NVSで利用できる名前の場合
+ * @return false 空、長すぎる、またはASCII範囲外の文字を含む場合
+ */
 bool validName(const char* name) {
   if (!name || !*name) return false;
   size_t length = 0;
@@ -19,7 +29,13 @@ bool validName(const char* name) {
   return true;
 }
 
-/** @brief namespace/キー不存在とIO障害を読取専用のNVS照会で区別する。 */
+/**
+ * @brief namespace/キー不存在とIO障害を読取専用のNVS照会で区別する。
+ * @param nameSpace 照会するNVS namespace
+ * @param key 照会するblobキー
+ * @param length 存在するblobの長さの格納先
+ * @return SettingsStatus 照会結果
+ */
 SettingsStatus inspect(const char* nameSpace, const char* key, size_t& length) {
   nvs_handle_t handle;
   esp_err_t result = nvs_open(nameSpace, NVS_READONLY, &handle);
@@ -34,7 +50,11 @@ SettingsStatus inspect(const char* nameSpace, const char* key, size_t& length) {
 
 }  // namespace
 
-/** @brief namespaceとアクセス方針を保持し、生成時にはNVSを変更しない。 */
+/**
+ * @brief namespaceとアクセス方針を保持し、生成時にはNVSを変更しない。
+ * @param nameSpace 使用するNVS namespace
+ * @param readOnly trueの場合は保存・削除を禁止する
+ */
 PreferencesBackend::PreferencesBackend(const char* nameSpace, bool readOnly)
     : _namespace(nameSpace ? nameSpace : ""), _readOnly(readOnly) {}
 
@@ -78,7 +98,11 @@ SettingsStatus PreferencesBackend::write(const char* key, const SettingsBytes& b
       ? SettingsStatus::Ok : SettingsStatus::IoError;
 }
 
-/** @brief 指定blobだけを削除し、namespace全体や他キーを消去しない。 */
+/**
+ * @brief 指定blobだけを削除し、namespace全体や他キーを消去しない。
+ * @param key 削除するblobキー
+ * @return SettingsStatus 削除結果
+ */
 SettingsStatus PreferencesBackend::remove(const char* key) {
   if (!validName(_namespace.c_str()) || !validName(key)) return SettingsStatus::InvalidArgument;
   if (_readOnly) return SettingsStatus::ReadOnly;

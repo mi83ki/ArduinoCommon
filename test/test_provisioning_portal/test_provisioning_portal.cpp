@@ -1,3 +1,8 @@
+/**
+ * @file test_provisioning_portal.cpp
+ * @brief プロビジョニングHTTPポータルの認証・入力制限・停止処理を検証するテスト。
+ */
+
 #include <unity.h>
 #include "provisioning/ProvisioningPortalESP32.h"
 #include "lwip/sockets.h"

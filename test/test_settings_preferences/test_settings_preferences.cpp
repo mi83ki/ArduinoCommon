@@ -1,3 +1,8 @@
+/**
+ * @file test_settings_preferences.cpp
+ * @brief Preferences/NVSバックエンドの分離・読取専用・障害処理を検証するテスト。
+ */
+
 #include <unity.h>
 #include "nvs.h"
 #include "settings/PreferencesBackend.h"

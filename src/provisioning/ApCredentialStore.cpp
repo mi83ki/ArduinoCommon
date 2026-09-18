@@ -1,3 +1,8 @@
+/**
+ * @file ApCredentialStore.cpp
+ * @brief 設定用アクセスポイントの認証情報を保存・生成する実装。
+ */
+
 #include "ApCredentialStore.h"
 #include "WiFiProfileValidator.h"
 #include <algorithm>
@@ -9,7 +14,12 @@ namespace {
 const RecordFormat format{{{'A','P','I','D'}},1,1,77};
 constexpr const char* key="ap_auth";
 constexpr const char* alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-/** @brief ラベル情報の最大長と文字列終端を検証する。 */
+/**
+ * @brief ラベル情報の最大長と文字列終端を検証する。
+ * @param value 検証するAP認証情報
+ * @return true 保存可能な形式の場合
+ * @return false 形式または長さが不正な場合
+ */
 bool valid(const ApCredentials& value) {
   return !value.ssid.empty() && value.ssid.size()<=31 && WiFiProfileValidator::validUtf8(value.ssid) &&
       value.password.size()==20 && std::all_of(value.password.begin(),value.password.end(),[](char c) {
@@ -17,12 +27,22 @@ bool valid(const ApCredentials& value) {
       });
 }
 }
-/** @brief namespaceを選択済みのbackendと、利用側の安全な乱数源を受け取る。 */
+/**
+ * @brief namespaceを選択済みのbackendと、利用側の安全な乱数源を受け取る。
+ * @param backend 認証情報の保存先バックエンド
+ * @param prefix APのSSIDへ付ける接頭辞
+ * @param mac デバイスのMACアドレス
+ * @param random 認証情報生成に使用する乱数関数
+ */
 ApCredentialStore::ApCredentialStore(ISettingsBackend& backend,std::string prefix,
     std::array<uint8_t,6> mac,RandomFill random)
     :_backend(backend),_prefix(std::move(prefix)),_mac(mac),_random(std::move(random)) {}
 
-/** @brief CRC・schemaと内容が正常なレコードだけを呼出元へ公開する。 */
+/**
+ * @brief CRC・schemaと内容が正常なレコードだけを呼出元へ公開する。
+ * @param output 読み出した認証情報の格納先。成功時だけ更新する
+ * @return SettingsStatus 読み出し結果
+ */
 SettingsStatus ApCredentialStore::load(ApCredentials& output) {
   SettingsBytes bytes;auto status=_backend.read(key,bytes,format.maximumSize);
   if(status!=SettingsStatus::Ok)return status;
@@ -34,12 +54,20 @@ SettingsStatus ApCredentialStore::load(ApCredentials& output) {
   if(!valid(candidate))return SettingsStatus::Corrupt;
   output=std::move(candidate);return SettingsStatus::Ok;
 }
-/** @brief 不存在の場合だけ初回生成し、破損・読取障害では既存ラベルを置き換えない。 */
+/**
+ * @brief 不存在の場合だけ初回生成し、破損・読取障害では既存ラベルを置き換えない。
+ * @param output 読み出しまたは生成した認証情報の格納先
+ * @return SettingsStatus 読み出しまたは初回生成の結果
+ */
 SettingsStatus ApCredentialStore::loadOrCreate(ApCredentials& output) {
   const auto status=load(output);
   return status==SettingsStatus::NotFound?regenerate(output):status;
 }
-/** @brief 明示要求で資格情報を再生成し、保存と読戻しが一致した場合だけ利用可能にする。 */
+/**
+ * @brief 明示要求で資格情報を再生成し、保存と読戻しが一致した場合だけ利用可能にする。
+ * @param output 再生成した認証情報の格納先。保存確認後だけ更新する
+ * @return SettingsStatus 再生成・保存・読戻しの結果
+ */
 SettingsStatus ApCredentialStore::regenerate(ApCredentials& output) {
   if(_prefix.size()>25 || !WiFiProfileValidator::validUtf8(_prefix))return SettingsStatus::InvalidArgument;
   uint8_t random[20];
@@ -58,7 +86,11 @@ SettingsStatus ApCredentialStore::regenerate(ApCredentials& output) {
     return SettingsStatus::Indeterminate;
   output=std::move(verified);return SettingsStatus::Ok;
 }
-/** @brief Wi-Fi QR形式の予約文字をエスケープする。印刷・表示の許可は利用側が管理する。 */
+/**
+ * @brief Wi-Fi QR形式の予約文字をエスケープする。印刷・表示の許可は利用側が管理する。
+ * @param credentials QRへ埋め込むAP認証情報
+ * @return std::string Wi-Fi QR形式の文字列
+ */
 std::string ApCredentialStore::wifiQr(const ApCredentials& credentials) {
   auto escape=[](const std::string& text) {
     std::string result;

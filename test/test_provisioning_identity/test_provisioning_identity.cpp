@@ -1,3 +1,8 @@
+/**
+ * @file test_provisioning_identity.cpp
+ * @brief AP認証情報の初回生成・読込・破損時動作を検証するテスト。
+ */
+
 #include <unity.h>
 #include "MemorySettingsBackend.h"
 #include "provisioning/ApCredentialStore.h"

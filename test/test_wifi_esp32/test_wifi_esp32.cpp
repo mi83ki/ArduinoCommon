@@ -1,3 +1,8 @@
+/**
+ * @file test_wifi_esp32.cpp
+ * @brief WiFiESP32の接続候補、固定IP、RTC復帰、再接続を検証するテスト。
+ */
+
 #include <unity.h>
 
 #include <array>

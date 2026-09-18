@@ -1,3 +1,8 @@
+/**
+ * @file test_provisioning_probe.cpp
+ * @brief Wi-Fi接続試験、スキャン、AP復帰の状態遷移を検証するテスト。
+ */
+
 #include <unity.h>
 #include "WiFi.h"
 #include "esp_netif.h"

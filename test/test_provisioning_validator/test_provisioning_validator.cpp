@@ -1,3 +1,8 @@
+/**
+ * @file test_provisioning_validator.cpp
+ * @brief Wi-Fiプロファイルの入力制約と秘密値更新を検証するテスト。
+ */
+
 #include <unity.h>
 #include "provisioning/WiFiProfileValidator.h"
 

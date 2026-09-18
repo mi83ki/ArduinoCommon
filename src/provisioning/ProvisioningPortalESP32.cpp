@@ -1,3 +1,8 @@
+/**
+ * @file ProvisioningPortalESP32.cpp
+ * @brief 制限付きHTTPサーバーとWi-Fi設定ポータルを実装する。
+ */
+
 #if !defined(ARDUINOCOMMON_DISABLE_PROVISIONING) && (defined(ARDUINO_ARCH_ESP32) || defined(ARDUINOCOMMON_TEST_ESP32))
 #include "ProvisioningPortalESP32.h"
 #include <lwip/sockets.h>
@@ -10,7 +15,15 @@
 
 namespace ArduinoCommon {
 namespace {
-/** @brief 制限付きのヘッダー取得で、過大入力を空値として扱わない。 */
+/**
+ * @brief 制限付きのヘッダー取得で、過大入力を空値として扱わない。
+ * @param request ヘッダーを取得するHTTP要求
+ * @param name 取得するヘッダー名
+ * @param maximum 許容する最大バイト数
+ * @param output 取得したヘッダー値の格納先
+ * @return true ヘッダーを取得できた場合
+ * @return false サイズ超過またはSDKの取得に失敗した場合
+ */
 bool header(httpd_req_t* request,const char* name,size_t maximum,std::string& output) {
   const size_t length=httpd_req_get_hdr_value_len(request,name);
   if(length>maximum)return false;
@@ -19,7 +32,11 @@ bool header(httpd_req_t* request,const char* name,size_t maximum,std::string& ou
   if(httpd_req_get_hdr_value_str(request,name,value.data(),value.size())!=ESP_OK)return false;
   output.assign(value.data(),length);return output.find('\0')==std::string::npos;
 }
-/** @brief JSON文字列として予約文字と制御文字をエスケープする。 */
+/**
+ * @brief JSON文字列として予約文字と制御文字をエスケープする。
+ * @param value エスケープする文字列
+ * @return std::string JSON文字列リテラル
+ */
 std::string quote(const std::string& value) {
   std::string output="\"";
   for(unsigned char c:value) {
@@ -29,7 +46,11 @@ std::string quote(const std::string& value) {
   }
   return output+'"';
 }
-/** @brief 公開するHTTPステータスを固定文字列へ変換する。 */
+/**
+ * @brief 公開するHTTPステータスを固定文字列へ変換する。
+ * @param status HTTPステータスコード
+ * @return const char* HTTPステータス行。未対応コードは500を返す
+ */
 const char* statusText(int status) {
   switch(status) {
     case 200:return "200 OK";case 202:return "202 Accepted";
@@ -41,7 +62,15 @@ const char* statusText(int status) {
     default:return "500 Internal Server Error";
   }
 }
-/** @brief キャッシュ・外部読込・埋込を禁止し、close通知どおり応答後に接続を解放する。 */
+/**
+ * @brief キャッシュ・外部読込・埋込を禁止し、close通知どおり応答後に接続を解放する。
+ * @param request 応答を返すHTTP要求
+ * @param status HTTPステータスコード
+ * @param body 応答本文
+ * @param length 応答本文のバイト数
+ * @param type Content-Type。省略時はJSON
+ * @return esp_err_t SDKへ返す処理結果。応答後に接続を閉じるためESP_FAIL
+ */
 esp_err_t respond(httpd_req_t* request,int status,const char* body,size_t length,const char* type="application/json; charset=utf-8") {
   httpd_resp_set_status(request,statusText(status));httpd_resp_set_type(request,type);
   httpd_resp_set_hdr(request,"Cache-Control","no-store");
@@ -53,26 +82,47 @@ esp_err_t respond(httpd_req_t* request,int status,const char* body,size_t length
   // 固定IDFのHTTPDはESP_OKで接続を保持するため、本文送信後に終了を指示する。
   return ESP_FAIL;
 }
-/** @brief 未読bodyを持つエラーでは接続も閉じて、次の要求へ混入させない。 */
+/**
+ * @brief 未読bodyを持つエラーでは接続も閉じて、次の要求へ混入させない。
+ * @param request エラー応答を返すHTTP要求
+ * @param status HTTPエラーステータスコード
+ * @return esp_err_t SDKへ返すエラー結果
+ */
 esp_err_t error(httpd_req_t* request,int status) {
   const std::string body="{\"error\":"+quote(statusText(status))+"}";
   respond(request,status,body.data(),body.size());return ESP_FAIL;
 }
 }
 
-/** @brief Wi-Fi所有者と制限値を受け取り、製品の型や保存処理を保持しない。 */
+/**
+ * @brief Wi-Fi所有者と制限値を受け取り、製品の型や保存処理を保持しない。
+ * @param probe Wi-Fi操作を所有するProbe
+ * @param options APアドレスやHTTP制限値
+ */
 ProvisioningPortalESP32::ProvisioningPortalESP32(WiFiProvisioningProbe& probe,PortalOptions options)
     :_probe(probe),_options(options) {
   const auto& ip=options.apAddress;_host=IPAddress(ip[0],ip[1],ip[2],ip[3]).toString().c_str();
 }
 /** @brief 利用側の所有タスクで、HTTP終了を待ってからWi-Fiを解放する。 */
 ProvisioningPortalESP32::~ProvisioningPortalESP32() {stop();}
-/** @brief 起動前だけ製品APIを登録し、標準APIと重複する経路を拒否する。 */
+/**
+ * @brief 起動前だけ製品APIを登録し、標準APIと重複する経路を拒否する。
+ * @param handler 製品用sessionを処理する関数
+ * @return true 登録できた場合
+ * @return false 起動済みまたは無効なハンドラーの場合
+ */
 bool ProvisioningPortalESP32::setSessionHandler(std::function<PortalResponse(const std::string&)> handler) {
   if(_running)return false;
   _sessionHandler=std::move(handler);return true;
 }
-/** @brief 起動前に値所有型の製品APIを登録する。 */
+/**
+ * @brief 起動前に値所有型の製品APIを登録する。
+ * @param method 登録するHTTPメソッド
+ * @param path 登録するAPIパス
+ * @param handler 要求を処理するハンドラー
+ * @return true 登録できた場合
+ * @return false パス、重複、制限数、または起動状態が不正な場合
+ */
 bool ProvisioningPortalESP32::addHandler(PortalMethod method,const std::string& path,Handler handler) {
   if(_running || !handler || path.size()>63 || path.compare(0,5,"/api/")!=0 ||
       path=="/api/session" || path=="/api/scan" || path=="/api/activity" ||
@@ -81,7 +131,15 @@ bool ProvisioningPortalESP32::addHandler(PortalMethod method,const std::string& 
   for(const auto& route:_routes)if(route.method==method && route.path==path)return false;
   _routes.push_back({method,path,std::move(handler)});return true;
 }
-/** @brief AP開始後の乱数からセッションを生成し、DNSと制限付きHTTPDを起動する。 */
+/**
+ * @brief AP開始後の乱数からセッションを生成し、DNSと制限付きHTTPDを起動する。
+ * @param credentials 設定用APの認証情報
+ * @param random セッション生成に使用する乱数関数
+ * @param gzipHtml 配信するgzip圧縮HTML
+ * @param size gzipHtmlのバイト数
+ * @return true ポータルを起動できた場合
+ * @return false 制限値、AP、HTTPD、DNSのいずれかの初期化に失敗した場合
+ */
 bool ProvisioningPortalESP32::begin(const ApCredentials& credentials,ApCredentialStore::RandomFill random,
                                    const uint8_t* gzipHtml,size_t size) {
   if(_running || !_options.maximumBody || _options.maximumBody>4096 || !_options.receiveMillis ||
@@ -109,7 +167,12 @@ bool ProvisioningPortalESP32::begin(const ApCredentials& credentials,ApCredentia
   }
   return true;
 }
-/** @brief accepted socketの宛先を検証し、dual-stackのIPv4-mapped AP宛ても扱う。 */
+/**
+ * @brief accepted socketの宛先を検証し、dual-stackのIPv4-mapped AP宛ても扱う。
+ * @param socket 検証するソケットディスクリプター
+ * @return true 設定用AP宛てのソケットの場合
+ * @return false それ以外、またはソケット情報を取得できない場合
+ */
 bool ProvisioningPortalESP32::apSocket(int socket) const {
   if(!_probe.apAvailable())return false;
   sockaddr_storage destination{};socklen_t size=sizeof(destination);
@@ -127,17 +190,30 @@ bool ProvisioningPortalESP32::apSocket(int socket) const {
   }
   return false;
 }
-/** @brief HTTPヘッダーを読む前に、設置先LAN宛てのソケットを拒否する。 */
+/**
+ * @brief HTTPヘッダーを読む前に、設置先LAN宛てのソケットを拒否する。
+ * @param handle HTTPサーバーハンドル
+ * @param socket accepted済みソケットディスクリプター
+ * @return esp_err_t SDKへ返す接続受付結果
+ */
 esp_err_t ProvisioningPortalESP32::accept(httpd_handle_t handle,int socket) {
   auto* portal=static_cast<ProvisioningPortalESP32*>(httpd_get_global_user_ctx(handle));
   return portal && portal->apSocket(socket)?ESP_OK:ESP_FAIL;
 }
-/** @brief 全標準・製品APIを同じ検証経路へ通す。 */
+/**
+ * @brief 全標準・製品APIを同じ検証経路へ通す。
+ * @param request ルーティング対象のHTTP要求
+ * @return esp_err_t SDKへ返すディスパッチ結果
+ */
 esp_err_t ProvisioningPortalESP32::dispatch(httpd_req_t* request) {
   auto* portal=static_cast<ProvisioningPortalESP32*>(request->user_ctx);
   return portal?portal->handle(request):ESP_FAIL;
 }
-/** @brief HTTPから受けたbodyは所有文字列へコピーし、SDK操作を所有タスクへ渡す。 */
+/**
+ * @brief HTTPから受けたbodyは所有文字列へコピーし、SDK操作を所有タスクへ渡す。
+ * @param request 処理対象のHTTP要求
+ * @return esp_err_t SDKへ返す要求処理結果
+ */
 esp_err_t ProvisioningPortalESP32::handle(httpd_req_t* request) {
   if(!_running || !apSocket(httpd_req_to_sockfd(request)))return error(request,403);
   std::string path=request->uri;path=path.substr(0,path.find('?'));
@@ -236,7 +312,16 @@ void ProvisioningPortalESP32::stop() {
   if(_server) {httpd_stop(_server);_server=nullptr;}
   _dns.stop();_probe.stop();_token.clear();
 }
+/**
+ * @brief ポータルが起動中かどうかを返す。
+ * @return true ポータルが起動中の場合
+ * @return false 停止中の場合
+ */
 bool ProvisioningPortalESP32::running() const {return _running;}
+/**
+ * @brief 最後に有効なHTTP要求を受け付けた時刻を返す。
+ * @return uint32_t millis()基準の最終活動時刻
+ */
 uint32_t ProvisioningPortalESP32::lastActivityMillis() const {std::lock_guard<std::mutex> lock(_mutex);return _lastActivity;}
 }
 #endif

@@ -30,6 +30,12 @@ struct LastSuccessfulAccessPoint {
 
 RTC_DATA_ATTR LastSuccessfulAccessPoint lastSuccessfulAccessPoint = {};
 
+/**
+ * @brief BSSIDがnullでなく、全バイトゼロでもないことを確認する。
+ * @param bssid 検証するBSSID。nullも許容する。
+ * @return true 接続先として利用できるBSSIDの場合
+ * @return false BSSIDが未設定または無効な場合
+ */
 bool hasValidBssid(const uint8_t *bssid) {
   if (bssid == nullptr) return false;
   for (uint8_t i = 0; i < 6; ++i) {
@@ -38,11 +44,20 @@ bool hasValidBssid(const uint8_t *bssid) {
   return false;
 }
 
+/**
+ * @brief RTCに保持した前回接続先を無効化する。
+ */
 void invalidateLastSuccessfulAccessPoint() {
   lastSuccessfulAccessPoint.magic = 0;
 }
 
-/** @brief IDFのゼロDNS拒否を避け、TCP/IPタスクで未使用DNSを同期的に解除する。 */
+/**
+ * @brief IDFのゼロDNS拒否を避け、TCP/IPタスクで未使用DNSを同期的に解除する。
+ * @param main DNS1を解除する場合はtrue
+ * @param backup DNS2を解除する場合はtrue
+ * @return true DNSを解除できた場合
+ * @return false STAインターフェースまたはTCP/IP処理を取得できない場合
+ */
 bool clearUnusedDns(bool main, bool backup) {
   if(!esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"))return false;
   bool clear[]={main,backup};
@@ -210,7 +225,16 @@ bool WiFiESP32::setStaticIp(const char *ipAddress, const char *gateway,
   return true;
 }
 
-/** @brief DNSを含む主プロファイルを検証し、全項目が有効な場合だけ採用する。 */
+/**
+ * @brief DNSを含む主プロファイルを検証し、全項目が有効な場合だけ採用する。
+ * @param ip 固定IPアドレス
+ * @param gateway デフォルトゲートウェイ
+ * @param mask サブネットマスク
+ * @param dns1 優先DNS。nullptrまたは空文字列で未指定
+ * @param dns2 代替DNS。nullptrまたは空文字列で未指定
+ * @return true すべてのネットワーク設定が有効な場合
+ * @return false いずれかの設定が不正な場合
+ */
 bool WiFiESP32::setStaticIp(const char* ip,const char* gateway,const char* mask,
                            const char* dns1,const char* dns2) {
   IPAddress first,second;
@@ -219,7 +243,18 @@ bool WiFiESP32::setStaticIp(const char* ip,const char* gateway,const char* mask,
   _credentials.front().dns1=first;_credentials.front().dns2=second;return true;
 }
 
-/** @brief DNS付き予備プロファイルを追加し、既存の5引数版の動作を保つ。 */
+/**
+ * @brief DNS付き予備プロファイルを追加し、既存の5引数版の動作を保つ。
+ * @param ssid 予備接続先のSSID
+ * @param password 予備接続先のパスワード
+ * @param ip 固定IPアドレス
+ * @param gateway デフォルトゲートウェイ
+ * @param mask サブネットマスク
+ * @param dns1 優先DNS。nullptrまたは空文字列で未指定
+ * @param dns2 代替DNS。nullptrまたは空文字列で未指定
+ * @return true 登録に成功した場合
+ * @return false 認証情報、ネットワーク設定、重複、または登録処理が不正な場合
+ */
 bool WiFiESP32::addAP(const char* ssid,const char* password,const char* ip,const char* gateway,
                       const char* mask,const char* dns1,const char* dns2) {
   IPAddress first,second;
@@ -235,7 +270,11 @@ void WiFiESP32::setDhcp() {
   primary.dns1=IPAddress();primary.dns2=IPAddress();
 }
 
-/** @brief 秘密値そのものをRTCへ保存せず、接続候補の変更を検出する。 */
+/**
+ * @brief 秘密値そのものをRTCへ保存せず、接続候補の変更を検出する。
+ * @param credential 指紋を計算するWi-Fi認証情報
+ * @return uint32_t 認証情報とネットワーク設定から計算した指紋
+ */
 uint32_t WiFiESP32::credentialFingerprint(const WiFiCredential& credential) const {
   uint32_t hash=2166136261u;
   auto append=[&](uint8_t byte) {hash=(hash^byte)*16777619u;};
@@ -625,7 +664,13 @@ bool WiFiESP32::healthCheck(void) {
   if (!connected) _lastFailedAttemptMs = millis();
   return connected;
 }
-/** @brief 呼出側が再試行間隔を指定する。未指定では従来の10秒を維持する。 */
+/**
+ * @brief 呼出側が再試行間隔を指定する。未指定では従来の10秒を維持する。
+ * @param milliseconds 再試行間隔。1秒未満は1秒、1時間超は1時間に丸める
+ */
 void WiFiESP32::setReconnectInterval(uint32_t milliseconds){_reconnectInterval=std::min<uint32_t>(3600000,std::max<uint32_t>(1000,milliseconds));}
-/** @brief 実際に完了した全候補の接続一巡だけを所有タスクへ返す。 */
+/**
+ * @brief 実際に完了した全候補の接続一巡だけを所有タスクへ返す。
+ * @return uint32_t 完了した接続一巡の累計回数
+ */
 uint32_t WiFiESP32::completedConnectionCycles() const{return _completedCycles;}

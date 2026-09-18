@@ -1,3 +1,8 @@
+/**
+ * @file main.cpp
+ * @brief 設定保存とWi-Fiプロビジョニングポータルの利用例。
+ */
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -26,14 +31,36 @@ uint64_t jobId=0;
 bool readOnly=false,pending=false,active=false,cancelRequested=false,rebootPending=false;
 std::string phase="idle",message="表示名とWi-Fiを入力してください。";
 
-/** @brief Wi-Fiの乱数源が有効な状態で呼ぶ。 */
+/**
+ * @brief Wi-Fiの乱数源が有効な状態で呼ぶ。
+ * @param bytes 乱数を書き込むバッファ
+ * @param length 生成する乱数のバイト数
+ * @return true 乱数を書き込んだ場合。本例では常にtrue
+ */
 bool fillRandom(uint8_t* bytes,size_t length) {esp_fill_random(bytes,length);return true;}
-/** @brief 組込みJSONの結果を所有文字列へ変換する。 */
+/**
+ * @brief 組込みJSONの結果を所有文字列へ変換する。
+ * @param doc 文字列化するJSONドキュメント
+ * @return std::string JSONのシリアライズ結果
+ */
 std::string json(const JsonDocument& doc) {std::string result;serializeJson(doc,result);return result;}
+/**
+ * @brief エラーメッセージをJSON形式のポータル応答へ変換する。
+ * @param status HTTPステータスコード
+ * @param text 利用者へ表示するエラーメッセージ
+ * @return PortalResponse 指定ステータスとエラー本文を持つ応答
+ */
 PortalResponse failure(int status,const char* text) {
   DynamicJsonDocument doc(512);doc["error"]["message"]=text;return {status,json(doc)};
 }
-/** @brief IPv4の十進4区切りだけを受理する。 */
+/**
+ * @brief IPv4の十進4区切りだけを受理する。
+ * @param value IPv4文字列を含むJSON値
+ * @param result 解析したIPv4アドレスの格納先
+ * @param optional nullを未指定として受理する場合はtrue
+ * @return true IPv4を解析できた場合
+ * @return false 値が文字列でない、またはIPv4形式でない場合
+ */
 bool parseAddress(JsonVariantConst value,IPv4& result,bool optional=false) {
   if(optional && value.isNull()) {result={};return true;}
   if(!value.is<const char*>())return false;
@@ -41,7 +68,14 @@ bool parseAddress(JsonVariantConst value,IPv4& result,bool optional=false) {
   if(!ip.fromString(text) || ip.toString()!=text)return false;
   result={{ip[0],ip[1],ip[2],ip[3]}};return true;
 }
-/** @brief 表示名と単一Wi-Fiを読み、秘密操作・IPの意味検証は共通Validatorへ委譲する。 */
+/**
+ * @brief 表示名と単一Wi-Fiを読み、秘密操作・IPの意味検証は共通Validatorへ委譲する。
+ * @param object 解析対象の設定JSON
+ * @param result 解析した設定の格納先。成功時だけ更新する
+ * @param submitted 保存要求として秘密値の操作を検証する場合はtrue
+ * @return true 設定全体を解析・検証できた場合
+ * @return false JSON構造、値、秘密操作、またはWi-Fi設定が不正な場合
+ */
 bool decode(JsonObjectConst object,ExampleConfig& result,bool submitted) {
   if(!object["displayName"].is<const char*>())return false;
   ExampleConfig next;next.displayName=object["displayName"].as<const char*>();
@@ -70,7 +104,12 @@ bool decode(JsonObjectConst object,ExampleConfig& result,bool submitted) {
   if(!WiFiProfileValidator::validate({next.network},0,true).empty())return false;
   result=std::move(next);return true;
 }
-/** @brief 保存時だけ秘密を含め、HTTP取得にはpasswordSetだけを公開する。 */
+/**
+ * @brief 保存時だけ秘密を含め、HTTP取得にはpasswordSetだけを公開する。
+ * @param object JSON出力先
+ * @param config JSONへ変換する設定
+ * @param includeSecret パスワードを出力へ含める場合はtrue
+ */
 void encode(JsonObject object,const ExampleConfig& config,bool includeSecret) {
   object["displayName"]=config.displayName;object["primaryProfileId"]=0;
   auto profiles=object.createNestedArray("profiles");if(config.network.ssid.empty())return;
@@ -85,7 +124,9 @@ void encode(JsonObject object,const ExampleConfig& config,bool includeSecret) {
     put("dns1",config.network.dns1);put("dns2",config.network.dns2);
   }
 }
-/** @brief HTTPハンドラーではRAMを更新するだけで、NVSやWi-Fiを操作しない。 */
+/**
+ * @brief HTTPハンドラーではRAMを更新するだけで、NVSやWi-Fiを操作しない。
+ */
 void registerApi() {
   portal.addHandler(PortalMethod::Get,"/api/config",[](const PortalRequest&) {
     std::lock_guard<std::mutex> lock(stateMutex);DynamicJsonDocument doc(4096);
@@ -114,7 +155,10 @@ void registerApi() {
     cancelRequested=true;return PortalResponse{202,"{}"};
   });
 }
-/** @brief 接続確認に失敗した場合は確定設定を維持する。 */
+/**
+ * @brief 接続確認に失敗した場合は確定設定を維持する。
+ * @param text 失敗理由として表示するメッセージ
+ */
 void failJob(const char* text) {
   std::lock_guard<std::mutex> lock(stateMutex);active=false;pending=false;phase="failed";message=text;
 }

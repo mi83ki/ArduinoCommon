@@ -1,3 +1,8 @@
+/**
+ * @file RecordEnvelopeCodec.cpp
+ * @brief 設定レコードの固定形式エンコード・デコードを実装する。
+ */
+
 #include "RecordEnvelopeCodec.h"
 
 #include <algorithm>
@@ -7,18 +12,32 @@
 namespace ArduinoCommon {
 namespace {
 
-/** @brief 固定幅整数をホストのアラインメントに依存せず読み出す。 */
+/**
+ * @brief 固定幅整数をホストのアラインメントに依存せず読み出す。
+ * @param bytes 読み出し元のバイト列
+ * @param offset 読み出し位置
+ * @return uint32_t little-endianで格納された整数
+ */
 uint32_t read32(const SettingsBytes& bytes, size_t offset) {
   return uint32_t(bytes[offset]) | (uint32_t(bytes[offset + 1]) << 8) |
          (uint32_t(bytes[offset + 2]) << 16) | (uint32_t(bytes[offset + 3]) << 24);
 }
 
-/** @brief 固定幅整数をlittle-endianで格納する。 */
+/**
+ * @brief 固定幅整数をlittle-endianで格納する。
+ * @param bytes 書き込み先のバイト列
+ * @param offset 書き込み位置
+ * @param value 格納する整数
+ */
 void write32(SettingsBytes& bytes, size_t offset, uint32_t value) {
   for (size_t i = 0; i < 4; ++i) bytes[offset + i] = uint8_t(value >> (8 * i));
 }
 
-/** @brief CRC欄をゼロと見なしてレコード全体のCRC32/ISO-HDLCを計算する。 */
+/**
+ * @brief CRC欄をゼロと見なしてレコード全体のCRC32/ISO-HDLCを計算する。
+ * @param bytes CRCを計算するレコード全体
+ * @return uint32_t 計算したCRC32値
+ */
 uint32_t recordCrc(const SettingsBytes& bytes) {
   uint32_t crc = 0xffffffffu;
   for (size_t i = 0; i < bytes.size(); ++i) {

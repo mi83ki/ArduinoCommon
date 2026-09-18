@@ -1,3 +1,8 @@
+/**
+ * @file AtomicRecordStore.cpp
+ * @brief 複数レコードを世代管理し、原子的に保存する実装。
+ */
+
 #include "AtomicRecordStore.h"
 
 #include <algorithm>
@@ -8,29 +13,54 @@
 namespace ArduinoCommon {
 namespace {
 
-/** @brief 採用情報の固定幅整数を読み出す。 */
+/**
+ * @brief 採用情報の固定幅整数を読み出す。
+ * @param bytes 採用情報を含むバイト列
+ * @param offset 読み出し位置
+ * @return uint32_t little-endianで格納された整数
+ */
 uint32_t get32(const SettingsBytes& bytes, size_t offset) {
   return uint32_t(bytes[offset]) | (uint32_t(bytes[offset+1]) << 8) |
          (uint32_t(bytes[offset+2]) << 16) | (uint32_t(bytes[offset+3]) << 24);
 }
-/** @brief 採用情報へ固定幅整数を書き込む。 */
+/**
+ * @brief 採用情報へ固定幅整数を書き込む。
+ * @param bytes 書き込み先のバイト列
+ * @param offset 書き込み位置
+ * @param value 書き込む整数
+ */
 void set32(SettingsBytes& bytes, size_t offset, uint32_t value) {
   for (unsigned i=0; i<4; ++i) bytes[offset+i] = uint8_t(value >> (i*8));
 }
 
-/** @brief 読込失敗のうち、別rootへフォールバックしてよいものを判定する。 */
+/**
+ * @brief 読込失敗のうち、別rootへフォールバックしてよいものを判定する。
+ * @param status 判定対象の設定状態
+ * @return true 別rootの検証を継続できる状態の場合
+ * @return false 即時に呼出元へ返すべき状態の場合
+ */
 bool invalidRecord(SettingsStatus status) {
   return status == SettingsStatus::NotFound || status == SettingsStatus::Corrupt;
 }
 }  // namespace
 
-/** @brief 外部backendと1～2個の論理レコードを保持し、生成時には保存しない。 */
+/**
+ * @brief 外部backendと1～2個の論理レコードを保持し、生成時には保存しない。
+ * @param backend レコードを保存するバックエンド
+ * @param records 二重化する論理レコードの定義
+ * @param roots 採用スナップショットを保持するrootレコードの定義
+ * @param metadataSize rootへ付加するmetadataの固定長
+ */
 AtomicRecordStore::AtomicRecordStore(ISettingsBackend& backend,
     std::vector<RecordSlots> records, RecordSlots roots, size_t metadataSize)
     : _backend(backend), _records(std::move(records)), _roots(std::move(roots)),
       _metadataSize(metadataSize) {}
 
-/** @brief キーの衝突・形式・root容量をアクセス前に検証する。 */
+/**
+ * @brief キーの衝突・形式・root容量をアクセス前に検証する。
+ * @return true 保存形式と容量が利用可能な場合
+ * @return false 設定定義に衝突、不正形式、または容量不足がある場合
+ */
 bool AtomicRecordStore::validOptions() const {
   if (_records.empty() || _records.size() > 2 || _roots.format.maximumSize < 24)
     return false;
@@ -104,7 +134,11 @@ SettingsStatus AtomicRecordStore::load(SettingsSnapshot& output) {
   return SettingsStatus::Ok;
 }
 
-/** @brief 永続データを再照合し、結果が確定した時だけ後続保存を許可する。 */
+/**
+ * @brief 永続データを再照合し、結果が確定した時だけ後続保存を許可する。
+ * @param output 再照合したスナップショットの格納先
+ * @return SettingsStatus 再照合結果
+ */
 SettingsStatus AtomicRecordStore::reconcile(SettingsSnapshot& output) {
   const auto status = load(output);
   if (status == SettingsStatus::Ok || status == SettingsStatus::NotFound) _uncertain = false;

@@ -1,3 +1,8 @@
+/**
+ * @file main.cpp
+ * @brief Preferences設定保存機能の最小利用例。
+ */
+
 #include <Arduino.h>
 #include "settings/AtomicRecordStore.h"
 #include "settings/PreferencesBackend.h"

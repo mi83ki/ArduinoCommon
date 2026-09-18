@@ -1,3 +1,8 @@
+/**
+ * @file test_settings_atomic.cpp
+ * @brief 原子的な設定保存、世代管理、障害復旧を検証するテスト。
+ */
+
 #include <unity.h>
 #include "MemorySettingsBackend.h"
 #include "settings/AtomicRecordStore.h"

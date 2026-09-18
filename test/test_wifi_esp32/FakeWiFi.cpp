@@ -1,3 +1,8 @@
+/**
+ * @file FakeWiFi.cpp
+ * @brief WiFiESP32テスト用のWi-Fi状態・接続APIモックを実装する。
+ */
+
 #include "WiFi.h"
 
 #include <algorithm>
