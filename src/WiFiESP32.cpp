@@ -8,13 +8,15 @@
 #include "WiFiESP32.h"
 
 #include <esp_system.h>
+#include <esp_netif.h>
+#include <lwip/dns.h>
 
 #include <algorithm>
 #include <cstring>
 
 namespace {
 
-constexpr uint32_t kRtcAccessPointMagic = 0x57494649;
+constexpr uint32_t kRtcAccessPointMagic = 0x5749464a;
 constexpr int32_t kMinimumWiFiChannel = 1;
 constexpr int32_t kMaximumWiFiChannel = 14;
 
@@ -23,10 +25,17 @@ struct LastSuccessfulAccessPoint {
   char ssid[33];
   uint8_t bssid[6];
   int32_t channel;
+  uint32_t credentialFingerprint;
 };
 
 RTC_DATA_ATTR LastSuccessfulAccessPoint lastSuccessfulAccessPoint = {};
 
+/**
+ * @brief BSSIDがnullでなく、全バイトゼロでもないことを確認する。
+ * @param bssid 検証するBSSID。nullも許容する。
+ * @return true 接続先として利用できるBSSIDの場合
+ * @return false BSSIDが未設定または無効な場合
+ */
 bool hasValidBssid(const uint8_t *bssid) {
   if (bssid == nullptr) return false;
   for (uint8_t i = 0; i < 6; ++i) {
@@ -35,8 +44,30 @@ bool hasValidBssid(const uint8_t *bssid) {
   return false;
 }
 
+/**
+ * @brief RTCに保持した前回接続先を無効化する。
+ */
 void invalidateLastSuccessfulAccessPoint() {
   lastSuccessfulAccessPoint.magic = 0;
+}
+
+/**
+ * @brief IDFのゼロDNS拒否を避け、TCP/IPタスクで未使用DNSを同期的に解除する。
+ * @param main DNS1を解除する場合はtrue
+ * @param backup DNS2を解除する場合はtrue
+ * @return true DNSを解除できた場合
+ * @return false STAインターフェースまたはTCP/IP処理を取得できない場合
+ */
+bool clearUnusedDns(bool main, bool backup) {
+  if(!esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"))return false;
+  bool clear[]={main,backup};
+  return esp_netif_tcpip_exec([](void* context)->esp_err_t {
+    const auto* slots=static_cast<const bool*>(context);
+    if(slots[0])dns_setserver(ESP_NETIF_DNS_MAIN,nullptr);
+    if(slots[1])dns_setserver(ESP_NETIF_DNS_BACKUP,nullptr);
+    dns_setserver(ESP_NETIF_DNS_FALLBACK,nullptr);
+    return ESP_OK;
+  },clear)==ESP_OK;
 }
 
 }  // namespace
@@ -188,8 +219,73 @@ bool WiFiESP32::setStaticIp(const char *ipAddress, const char *gateway,
   primary.staticIp = parsedIp;
   primary.gateway = parsedGateway;
   primary.subnet = parsedSubnet;
+  primary.dns1 = IPAddress();
+  primary.dns2 = IPAddress();
   primary.staticIpEnabled = true;
   return true;
+}
+
+/**
+ * @brief DNSを含む主プロファイルを検証し、全項目が有効な場合だけ採用する。
+ * @param ip 固定IPアドレス
+ * @param gateway デフォルトゲートウェイ
+ * @param mask サブネットマスク
+ * @param dns1 優先DNS。nullptrまたは空文字列で未指定
+ * @param dns2 代替DNS。nullptrまたは空文字列で未指定
+ * @return true すべてのネットワーク設定が有効な場合
+ * @return false いずれかの設定が不正な場合
+ */
+bool WiFiESP32::setStaticIp(const char* ip,const char* gateway,const char* mask,
+                           const char* dns1,const char* dns2) {
+  IPAddress first,second;
+  if(!dns1 || !dns2 || !first.fromString(dns1) || !second.fromString(dns2))return false;
+  if(!setStaticIp(ip,gateway,mask))return false;
+  _credentials.front().dns1=first;_credentials.front().dns2=second;return true;
+}
+
+/**
+ * @brief DNS付き予備プロファイルを追加し、既存の5引数版の動作を保つ。
+ * @param ssid 予備接続先のSSID
+ * @param password 予備接続先のパスワード
+ * @param ip 固定IPアドレス
+ * @param gateway デフォルトゲートウェイ
+ * @param mask サブネットマスク
+ * @param dns1 優先DNS。nullptrまたは空文字列で未指定
+ * @param dns2 代替DNS。nullptrまたは空文字列で未指定
+ * @return true 登録に成功した場合
+ * @return false 認証情報、ネットワーク設定、重複、または登録処理が不正な場合
+ */
+bool WiFiESP32::addAP(const char* ssid,const char* password,const char* ip,const char* gateway,
+                      const char* mask,const char* dns1,const char* dns2) {
+  IPAddress first,second;
+  if(!dns1 || !dns2 || !first.fromString(dns1) || !second.fromString(dns2))return false;
+  if(!addAP(ssid,password,ip,gateway,mask))return false;
+  _credentials.back().dns1=first;_credentials.back().dns2=second;return true;
+}
+
+/** @brief 次回接続時に主プロファイルをDHCPへ戻す。 */
+void WiFiESP32::setDhcp() {
+  auto& primary=_credentials.front();primary.staticIpEnabled=false;
+  primary.staticIp=IPAddress();primary.gateway=IPAddress();primary.subnet=IPAddress();
+  primary.dns1=IPAddress();primary.dns2=IPAddress();
+}
+
+/**
+ * @brief 秘密値そのものをRTCへ保存せず、接続候補の変更を検出する。
+ * @param credential 指紋を計算するWi-Fi認証情報
+ * @return uint32_t 認証情報とネットワーク設定から計算した指紋
+ */
+uint32_t WiFiESP32::credentialFingerprint(const WiFiCredential& credential) const {
+  uint32_t hash=2166136261u;
+  auto append=[&](uint8_t byte) {hash=(hash^byte)*16777619u;};
+  for(const char* value:{credential.ssid.c_str(),credential.password.c_str()}) {
+    do {append(uint8_t(*value));} while(*value++);
+  }
+  append(credential.primary);append(credential.staticIpEnabled);
+  for(const auto& ip:{credential.staticIp,credential.gateway,credential.subnet,credential.dns1,credential.dns2}) {
+    for(size_t i=0;i<4;++i)append(ip[i]);
+  }
+  return hash;
 }
 
 /**
@@ -200,6 +296,7 @@ bool WiFiESP32::setStaticIp(const char *ipAddress, const char *gateway,
  */
 bool WiFiESP32::begin(void) {
   const bool connected = connectWiFi();
+  ++_completedCycles;
   _hasFailedAttempt = !connected;
   if (connected) return true;
 
@@ -287,7 +384,8 @@ bool WiFiESP32::connectFromRtc(void) {
 
   const WiFiCredential *credential =
       findCredential(lastSuccessfulAccessPoint.ssid);
-  if (credential == nullptr || !configureNetwork(*credential)) {
+  if (credential == nullptr || lastSuccessfulAccessPoint.credentialFingerprint != credentialFingerprint(*credential) ||
+      !configureNetwork(*credential)) {
     invalidateLastSuccessfulAccessPoint();
     return false;
   }
@@ -429,7 +527,8 @@ bool WiFiESP32::connectFallbackFromScan(void) {
 bool WiFiESP32::configureNetwork(const WiFiCredential &credential) {
   if (credential.staticIpEnabled) {
     return WiFi.config(credential.staticIp, credential.gateway,
-                       credential.subnet);
+                       credential.subnet, credential.dns1, credential.dns2) &&
+        clearUnusedDns(credential.dns1==IPAddress(),credential.dns2==IPAddress());
   }
   return enableDhcp();
 }
@@ -442,7 +541,7 @@ bool WiFiESP32::configureNetwork(const WiFiCredential &credential) {
  */
 bool WiFiESP32::enableDhcp(void) {
   const IPAddress dynamicAddress(INADDR_NONE);
-  return WiFi.config(dynamicAddress, dynamicAddress, dynamicAddress);
+  return WiFi.config(dynamicAddress, dynamicAddress, dynamicAddress) && clearUnusedDns(true,true);
 }
 
 /**
@@ -496,6 +595,7 @@ void WiFiESP32::saveConnectedAccessPoint(void) {
   std::memcpy(lastSuccessfulAccessPoint.bssid, bssid,
               sizeof(lastSuccessfulAccessPoint.bssid));
   lastSuccessfulAccessPoint.channel = channel;
+  lastSuccessfulAccessPoint.credentialFingerprint = credentialFingerprint(*findCredential(connectedSsid.c_str()));
 }
 
 /**
@@ -554,12 +654,23 @@ bool WiFiESP32::healthCheck(void) {
     return true;
   }
   if (_hasFailedAttempt &&
-      millis() - _lastFailedAttemptMs < WIFI_RECONNECT_INTERVAL) {
+      millis() - _lastFailedAttemptMs < _reconnectInterval) {
     return false;
   }
 
   const bool connected = connectWiFi();
+  ++_completedCycles;
   _hasFailedAttempt = !connected;
   if (!connected) _lastFailedAttemptMs = millis();
   return connected;
 }
+/**
+ * @brief 呼出側が再試行間隔を指定する。未指定では従来の10秒を維持する。
+ * @param milliseconds 再試行間隔。1秒未満は1秒、1時間超は1時間に丸める
+ */
+void WiFiESP32::setReconnectInterval(uint32_t milliseconds){_reconnectInterval=std::min<uint32_t>(3600000,std::max<uint32_t>(1000,milliseconds));}
+/**
+ * @brief 実際に完了した全候補の接続一巡だけを所有タスクへ返す。
+ * @return uint32_t 完了した接続一巡の累計回数
+ */
+uint32_t WiFiESP32::completedConnectionCycles() const{return _completedCycles;}
