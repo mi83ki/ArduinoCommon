@@ -24,6 +24,7 @@ PROFILES = {
     "scouter": SCOUTER_SOURCES,
     "kunai": KUNAI_SOURCES,
 }
+COMMON_SUPPORT_SOURCES = ("settings/*.cpp", "provisioning/*.cpp")
 
 profile = env.GetProjectOption("custom_arduinocommon_profile", "legacy")
 if profile not in PROFILES:
@@ -33,4 +34,5 @@ if profile not in PROFILES:
     )
 
 # manifest に srcFilter を残すと、こちらの設定より優先されるため置かない。
-env.Replace(SRC_FILTER=["-<*>"] + [f"+<{name}>" for name in PROFILES[profile]])
+selected = PROFILES[profile] + COMMON_SUPPORT_SOURCES
+env.Replace(SRC_FILTER=["-<*>"] + [f"+<{name}>" for name in selected])
