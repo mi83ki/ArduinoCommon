@@ -41,14 +41,14 @@ class BuildEnvironment(dict):
         self.update(values)
 
 
-def selected_sources(profile):
-    """manifest と登録済みスクリプトを通して選択結果を得る。
+def selected_source_paths(profile):
+    """manifest と登録済みスクリプトを通して相対パスの選択結果を得る。
 
     Args:
         profile: 利用側オプション。None は未指定。
 
     Returns:
-        選択されたソースファイル名の集合。
+        選択されたソース相対パスの集合。
     """
     manifest = json.loads((ROOT / "library.json").read_text("utf-8"))
     build = manifest["build"]
@@ -64,8 +64,10 @@ def selected_sources(profile):
     selected = set()
     for rule in filters:
         matches = {
-            path.name for path in (ROOT / "src").glob("*.cpp")
-            if fnmatch.fnmatch(path.name, rule[2:-1])
+            path.relative_to(ROOT / "src").as_posix()
+            for path in (ROOT / "src").rglob("*.cpp")
+            if fnmatch.fnmatch(
+                path.relative_to(ROOT / "src").as_posix(), rule[2:-1])
         }
         if rule.startswith("+<"):
             selected.update(matches)
@@ -73,6 +75,18 @@ def selected_sources(profile):
             assert rule.startswith("-<")
             selected.difference_update(matches)
     return selected
+
+
+def selected_sources(profile):
+    """直下にある機能ソースの選択結果を得る。
+
+    Args:
+        profile: 利用側オプション。None は未指定。
+
+    Returns:
+        選択された直下ソースファイル名の集合。
+    """
+    return {path for path in selected_source_paths(profile) if "/" not in path}
 
 
 @pytest.mark.parametrize("profile", [None, "legacy"])
@@ -103,3 +117,15 @@ def test_profile_evaluations_do_not_leak_between_environments():
     assert selected_sources("kunai") == KUNAI
     assert selected_sources("scouter") == SCOUTER
     assert selected_sources(None) == LEGACY
+
+
+@pytest.mark.parametrize("profile", [None, "legacy", "scouter", "kunai"])
+def test_every_profile_preserves_settings_and_provisioning(profile):
+    """製品別ドライバー選択後も設定保存とプロビジョニングをリンクする。"""
+    selected = selected_source_paths(profile)
+    expected = {
+        path.relative_to(ROOT / "src").as_posix()
+        for directory in ("settings", "provisioning")
+        for path in (ROOT / "src" / directory).glob("*.cpp")
+    }
+    assert expected <= selected
