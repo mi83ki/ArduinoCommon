@@ -25,7 +25,8 @@ std::uint32_t millis() { return 123; }
 int lwip_socket(int, int, int) { ++calls.sockets; return calls.socketResult; }
 /** @brief 非待機フラグを記録する。 @param cmd 操作。 @param flags 指定フラグ。 @return 結果。 */
 int lwip_fcntl(int, int cmd, int flags) {
-  if (calls.flagError) { return -1; }
+  if ((calls.flagError == 1 && cmd == F_GETFL) ||
+      (calls.flagError == 2 && cmd == F_SETFL)) { return -1; }
   if (cmd == F_GETFL) { return 0; }
   calls.flags = flags; return 0;
 }
@@ -77,7 +78,7 @@ void testNonblockingConnectAndLifetime() {
 }
 /** @brief 接続失敗の全経路でfdを閉じ、Wi-Fi未接続ではsocketを生成しない。 */
 void testConnectFailuresCloseDescriptor() {
-  for (int failure = 0; failure < 6; ++failure) {
+  for (int failure = 0; failure < 7; ++failure) {
     calls = {};
     TcpSocketESP32 socket;
     if (failure == 0) { calls.flagError = 1; }
@@ -86,6 +87,7 @@ void testConnectFailuresCloseDescriptor() {
     if (failure == 3) { calls.getError = -1; }
     if (failure == 4) { calls.selectResult = -1; }
     if (failure == 5) { calls.connectError = ECONNREFUSED; }
+    if (failure == 6) { calls.flagError = 2; }
     TEST_ASSERT_FALSE(socket.connect({127, 0, 0, 1}, 23));
     TEST_ASSERT_EQUAL(1, calls.closes);
     socket.close();
@@ -96,6 +98,10 @@ void testConnectFailuresCloseDescriptor() {
   TcpSocketESP32 socket;
   TEST_ASSERT_FALSE(socket.connect({127, 0, 0, 1}, 23));
   TEST_ASSERT_EQUAL(0, calls.sockets);
+  calls.wifi = true;
+  calls.socketResult = -1;
+  TEST_ASSERT_FALSE(socket.connect({127, 0, 0, 1}, 23));
+  TEST_ASSERT_EQUAL(0, calls.closes);
 }
 /** @brief 部分送受信とwould-blockを1 syscallで返し、EOFと障害を区別する。 */
 void testSingleCallIoResults() {
@@ -118,6 +124,14 @@ void testSingleCallIoResults() {
   calls.writeResult = -1;
   calls.ioError = ECONNRESET;
   TEST_ASSERT_EQUAL(int(IoStatus::ERROR), int(socket.write(buffer, sizeof(buffer)).status));
+  calls.ioError = EINTR;
+  TEST_ASSERT_EQUAL(int(IoStatus::WOULD_BLOCK), int(socket.write(buffer, sizeof(buffer)).status));
+  const auto writes = calls.writes;
+  const auto reads = calls.reads;
+  TEST_ASSERT_EQUAL(int(IoStatus::ERROR), int(socket.write(nullptr, 8).status));
+  TEST_ASSERT_EQUAL(int(IoStatus::ERROR), int(socket.read(buffer, 0).status));
+  TEST_ASSERT_EQUAL(writes, calls.writes);
+  TEST_ASSERT_EQUAL(reads, calls.reads);
   ArduinoMillisClock clock;
   TEST_ASSERT_EQUAL(123, clock.nowMs());
 }
