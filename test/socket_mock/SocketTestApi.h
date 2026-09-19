@@ -3,6 +3,7 @@
 #include <cstdint>
 #ifdef _WIN32
 #include <winsock2.h>
+#undef ERROR
 using socklen_t = int;
 #define F_GETFL 3
 #define F_SETFL 4

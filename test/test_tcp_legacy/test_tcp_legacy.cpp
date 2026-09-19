@@ -25,6 +25,9 @@ void testLegacySendContract() {
   TEST_ASSERT_TRUE(client.sendString("abc"));
   TEST_ASSERT_EQUAL_STRING("abc\n", tcpFake.output.c_str());
   TEST_ASSERT_EQUAL_UINT(1, tcpFake.connects);
+  tcpFake.writeCount = 2;
+  TEST_ASSERT_TRUE(client.sendString("abc"));
+  TEST_ASSERT_EQUAL_STRING("abc\nabc\n", tcpFake.output.c_str());
   client.disconnectedAction();
   tcpFake.connectResult = false;
   TEST_ASSERT_FALSE(client.sendString("def"));

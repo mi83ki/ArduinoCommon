@@ -173,7 +173,6 @@ void testPollBudgets() {
   channel.poll();
   TEST_ASSERT_EQUAL_UINT(before + 1, stream.reads);
 }
-/** @brief 公開フレームAPIの試験を実行する。 @return Unity終了コード。 */
 /** @brief 先読みされた次の部分frameも受信時刻を期限起点にする。 */
 void testPrefetchedPartialDeadline() {
   FakeClock clock;
@@ -288,6 +287,7 @@ void testSendSizeAndResume() {
   TEST_ASSERT_EQUAL_UINT(4097, stream.output.size());
   TEST_ASSERT_EQUAL_CHAR('\n', stream.output.back());
 }
+/** @brief 公開フレームAPIの試験を実行する。 @return Unity終了コード。 */
 int main() {
   UNITY_BEGIN();
   RUN_TEST(testSplitAndConcatenatedFrames);

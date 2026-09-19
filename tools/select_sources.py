@@ -35,4 +35,6 @@ if profile not in PROFILES:
 
 # manifest に srcFilter を残すと、こちらの設定より優先されるため置かない。
 selected = PROFILES[profile] + COMMON_SUPPORT_SOURCES
+if profile in ("scouter", "kunai"):
+    selected += ("transport/*.cpp",)
 env.Replace(SRC_FILTER=["-<*>"] + [f"+<{name}>" for name in selected])

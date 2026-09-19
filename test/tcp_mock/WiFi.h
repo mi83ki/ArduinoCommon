@@ -19,7 +19,7 @@ class WiFiClient {
   void stop() { ++tcpFake.stops; }
   int available() { return tcpFake.input.size(); }
   size_t print(String text) {
-    tcpFake.output = text.c_str();
+    tcpFake.output += text.c_str();
     return tcpFake.writeCount;
   }
   String readStringUntil(char delimiter) {
