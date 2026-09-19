@@ -115,6 +115,7 @@ void FramedChannel::poll() {
       if (result.status == IoStatus::WOULD_BLOCK) { return; }
       pendingPosition_ = 0;
       pendingSize_ = result.size;
+      pendingReceived_ = clock_.nowMs();
       bytes += result.size;
     }
     // 新たなsyscallなしで先読みを消費する。LF以後のbyteは次frameまで保持。
@@ -127,7 +128,7 @@ void FramedChannel::poll() {
         fail(ChannelError::FRAME_TOO_LONG);
         return;
       } else {
-        if (receiveSize_ == 0) { receiveStarted_ = clock_.nowMs(); }
+        if (receiveSize_ == 0) { receiveStarted_ = pendingReceived_; }
         receive_[receiveSize_++] = value;
       }
     }

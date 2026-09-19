@@ -37,7 +37,7 @@ class FramedChannel {
   std::array<uint8_t, 128> pending_{};
   std::size_t receiveSize_{0}, sendSize_{0}, sentSize_{0};
   std::size_t pendingSize_{0}, pendingPosition_{0};
-  uint32_t receiveStarted_{0}, sendStarted_{0};
+  uint32_t receiveStarted_{0}, sendStarted_{0}, pendingReceived_{0};
   bool ready_{false};
   ChannelError error_{ChannelError::DISCONNECTED};
 };
