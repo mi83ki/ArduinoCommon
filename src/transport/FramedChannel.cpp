@@ -5,6 +5,24 @@
 
 namespace ArduinoCommon {
 namespace Transport {
+/** @fn IoResult ByteStream::read(uint8_t* output, std::size_t capacity)
+ * @brief 非待機で最大capacity byteを読み、実byte数を返す接点。
+ * @param output 呼出中だけ有効な出力先。実装は保持しない。
+ * @param capacity 書込み上限。1以上。
+ * @return PROGRESSは1〜capacity、他の状態は0 byte。待機時はWOULD_BLOCK。
+ */
+/** @fn IoResult ByteStream::write(const uint8_t* data, std::size_t size)
+ * @brief 非待機で最大size byteを書き、部分送信量を返す接点。
+ * @param data 呼出中だけ有効な入力。実装は保持しない。
+ * @param size 入力byte数。1以上。
+ * @return PROGRESSは1〜size、他の状態は0 byte。内部で再試行待ちしない。
+ */
+/** @fn void ByteStream::close()
+ * @brief 所有する接続を閉じる。再呼出し可能で、長い終了待ちを行わないこと。
+ */
+/** @fn uint32_t Clock::nowMs() const
+ * @brief 単調ms時計を取得する。 @return uint32折返しを許容する現在時刻。
+ */
 namespace {
 constexpr std::size_t BYTE_BUDGET = 512;
 constexpr unsigned CALL_BUDGET = 8;
