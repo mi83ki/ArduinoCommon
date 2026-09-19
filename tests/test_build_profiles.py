@@ -129,3 +129,14 @@ def test_every_profile_preserves_settings_and_provisioning(profile):
         for path in (ROOT / "src" / directory).glob("*.cpp")
     }
     assert expected <= selected
+
+
+@pytest.mark.parametrize("profile", ["scouter", "kunai"])
+def test_products_select_bounded_transport(profile):
+    """両製品は新しいフレーム処理と非待機socketを選択する。"""
+    assert {"transport/FramedChannel.cpp", "transport/TcpSocketESP32.cpp"} <= selected_source_paths(profile)
+
+
+def test_legacy_does_not_add_transport():
+    """旧利用者には追加transportを暗黙リンクしない。"""
+    assert not any(path.startswith("transport/") for path in selected_source_paths(None))
