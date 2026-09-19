@@ -17,12 +17,14 @@ struct FakeStream : ByteStream {
   size_t readLimit{4096}, writeLimit{4096};
   unsigned reads{0}, writes{0}, closes{0};
   bool eof{false}, broken{false};
+  bool invalid{false}, writeClosed{false};
   uint32_t cost{0};
   /** @brief 偽受信を行う。 @param out 出力先。 @param size 上限。 @return 状態とbyte数。 */
   IoResult read(uint8_t* out, size_t size) override {
     ++reads;
     if (clock) { clock->now += cost; }
     if (broken) { return {IoStatus::ERROR, 0}; }
+    if (invalid) { return {IoStatus::PROGRESS, size + 1}; }
     const auto count = std::min({size, input.size(), readLimit});
     if (count) {
       std::memcpy(out, input.data(), count);
@@ -36,6 +38,7 @@ struct FakeStream : ByteStream {
     ++writes;
     if (clock) { clock->now += cost; }
     if (broken) { return {IoStatus::ERROR, 0}; }
+    if (writeClosed) { return {IoStatus::CLOSED, 0}; }
     const auto count = std::min(size, writeLimit);
     output.append(reinterpret_cast<const char*>(data), count);
     return {count ? IoStatus::PROGRESS : IoStatus::WOULD_BLOCK, count};
@@ -171,6 +174,120 @@ void testPollBudgets() {
   TEST_ASSERT_EQUAL_UINT(before + 1, stream.reads);
 }
 /** @brief 公開フレームAPIの試験を実行する。 @return Unity終了コード。 */
+/** @brief 先読みされた次の部分frameも受信時刻を期限起点にする。 */
+void testPrefetchedPartialDeadline() {
+  FakeClock clock;
+  FakeStream stream;
+  FramedChannel channel(stream, clock);
+  channel.reset();
+  stream.input = "ok\nx";
+  channel.poll();
+  clock.now = 6000;
+  channel.consumeFrame();
+  channel.poll();
+  TEST_ASSERT_EQUAL(int(ChannelError::RECEIVE_TIMEOUT), int(channel.error()));
+}
+/** @brief 小さいI/Oの8call制限と送受信合算のbyte/time予算を固定する。 */
+void testCombinedBudgets() {
+  FakeClock clock;
+  FakeStream stream;
+  FramedChannel channel(stream, clock);
+  channel.reset();
+  stream.input.assign(4000, 'a');
+  stream.readLimit = 1;
+  channel.send("x", 1);
+  channel.poll();
+  TEST_ASSERT_EQUAL_UINT(8, stream.reads + stream.writes);
+  stream.readLimit = 4096;
+  const auto remaining = stream.input.size();
+  std::string payload(512, 'b');
+  channel.send(payload.data(), payload.size());
+  channel.poll();
+  TEST_ASSERT_EQUAL_UINT(remaining - 384, stream.input.size());
+  stream.clock = &clock;
+  stream.cost = 4;
+  const auto reads = stream.reads;
+  channel.poll();
+  TEST_ASSERT_EQUAL_UINT(reads, stream.reads);
+}
+/** @brief 部分進捗や時計折返しでも絶対期限を延長しない。 */
+void testProgressDoesNotExtendDeadlines() {
+  FakeClock clock;
+  clock.now = 0xffffff00U;
+  FakeStream stream;
+  stream.writeLimit = 1;
+  FramedChannel channel(stream, clock);
+  channel.reset();
+  channel.send("abcde", 5);
+  channel.poll();
+  clock.now += 999;
+  channel.poll();
+  clock.now += 1;
+  channel.poll();
+  TEST_ASSERT_EQUAL(int(ChannelError::SEND_TIMEOUT), int(channel.error()));
+  clock.now = 0xffffff00U;
+  channel.reset();
+  stream.input = "a";
+  channel.poll();
+  clock.now += 4999;
+  stream.input = "b";
+  channel.poll();
+  clock.now += 1;
+  stream.input = "\n";
+  channel.poll();
+  TEST_ASSERT_EQUAL(int(ChannelError::RECEIVE_TIMEOUT), int(channel.error()));
+}
+/** @brief 障害の種類によらず送受信と先読みを破棄し一度だけcloseする。 */
+void testFailuresDiscardAllState() {
+  for (unsigned mode = 0; mode < 4; ++mode) {
+    FakeClock clock;
+    FakeStream stream;
+    FramedChannel channel(stream, clock);
+    channel.reset();
+    stream.writeLimit = 1;
+    channel.send("pending", 7);
+    stream.input = "ready\nold";
+    channel.poll();
+    TEST_ASSERT_TRUE(channel.hasFrame());
+    if (mode == 0) { channel.disconnect(); }
+    if (mode == 1) { stream.writeClosed = true; channel.poll(); }
+    if (mode == 2) { stream.broken = true; channel.poll(); }
+    if (mode == 3) { stream.invalid = true; channel.consumeFrame(); channel.poll(); }
+    TEST_ASSERT_FALSE(channel.sendPending());
+    TEST_ASSERT_FALSE(channel.hasFrame());
+    TEST_ASSERT_NOT_EQUAL(int(ChannelError::NONE), int(channel.error()));
+    channel.disconnect();
+    TEST_ASSERT_EQUAL_UINT(1, stream.closes);
+    stream.invalid = stream.broken = stream.writeClosed = false;
+    channel.reset();
+    stream.input = "new\n";
+    channel.poll();
+    TEST_ASSERT_EQUAL_STRING("new", channel.frameData());
+  }
+}
+/** @brief 送信境界とwould-block後の再開を確認する。 */
+void testSendSizeAndResume() {
+  FakeClock clock;
+  FakeStream stream;
+  FramedChannel channel(stream, clock);
+  channel.reset();
+  std::string payload(4097, 'z');
+  TEST_ASSERT_EQUAL(int(QueueResult::INVALID), int(channel.send(nullptr, 0)));
+  TEST_ASSERT_EQUAL(int(QueueResult::INVALID), int(channel.send(payload.data(), 4097)));
+  TEST_ASSERT_EQUAL(int(QueueResult::QUEUED), int(channel.send("", 0)));
+  channel.poll();
+  TEST_ASSERT_EQUAL_STRING("\n", stream.output.c_str());
+  stream.output.clear();
+  channel.send(payload.data(), 4096);
+  channel.poll();
+  stream.writeLimit = 0;
+  channel.poll();
+  stream.writeLimit = 4096;
+  for (unsigned i = 0; i < 40; ++i) { channel.poll(); }
+  TEST_ASSERT_FALSE(channel.sendPending());
+  TEST_ASSERT_EQUAL_UINT(4097, stream.output.size());
+  TEST_ASSERT_EQUAL_CHAR('\n', stream.output.back());
+}
 int main() {
   UNITY_BEGIN();
   RUN_TEST(testSplitAndConcatenatedFrames);
@@ -179,5 +296,10 @@ int main() {
   RUN_TEST(testSendDeadlineAndClockWrap);
   RUN_TEST(testPartialReceiveDeadlineAndDisconnect);
   RUN_TEST(testPollBudgets);
+  RUN_TEST(testPrefetchedPartialDeadline);
+  RUN_TEST(testCombinedBudgets);
+  RUN_TEST(testProgressDoesNotExtendDeadlines);
+  RUN_TEST(testFailuresDiscardAllState);
+  RUN_TEST(testSendSizeAndResume);
   return UNITY_END();
 }
