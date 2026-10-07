@@ -19,7 +19,7 @@ custom_arduinocommon_profile = scouter
 | 値 | コンパイルするソース |
 | --- | --- |
 | 未指定 / legacy | Log、MQTTClientESP32、MacUtils、Menu、SleepHandler、Timer、WiFiESP32（0.6.0 の既定動作） |
-| scouter | Log、MacUtils、Timer、WiFiESP32、TCPClientESP32、NeoPixelArrayBase、Vibrator、TimedPatternPlayer |
+| scouter | Log、MacUtils、Timer、WiFiESP32、TCPClientESP32、NeoPixelArrayBase、Vibrator、TimedPatternPlayer、transport/*.cpp |
 | kunai | scouter に Buzzer、Speaker、InfraredRemote、Filter、Menu を追加 |
 
 空文字を含む未知の値はビルドエラーです。製品用プロファイルは Arduino ESP32 用です。
@@ -44,6 +44,33 @@ native は Wi-Fi/MQTT のモック試験です。ESP32 と ESP32-S3 の製品リ
 実機の DAC/LED/振動試験を代替しません。
 
 ## クラス一覧
+
+### 有限予算TCP（旧TCPClientESP32とは別API）
+
+`transport/FramedChannel.h`は製品非依存のLF区切り通信です。
+`ByteStream`と`Clock`を借用し、各4097 byteの送受信バッファと128 byteの先読みを所有します。
+受信frame・送信待ちは各1件。LFを除く4096 byteを受理し、超過は切断します。
+`send()`のQUEUEDはコピー受付のみで、`sendPending()==false`かつ`error()==NONE`が送出完了です。
+`frameData()/frameSize()`は`consumeFrame/reset/disconnect`まで有効な借用viewです。
+完成受信を消費するまで次のframeやEOFを読み進めないため、所有者は毎周期消費してください。
+
+- `poll()`は最大512 I/O byte、8 I/O呼出し、4msの呼出し間予算。各I/O自体も非待機であることが前提。
+- 送信期限1000msは受付時から、部分受信期限5000msは最初の受信時から。進捗で延長しません。
+  先読みに残った次frameも受信時刻を保持し、処理再開時に期限を判定します。
+- `TcpSocketESP32`はfdを所有して非待機recv/sendを各1回だけ呼びます。
+  接続は数値IPv4・portと1〜1000msのselect待ち。DNSは行いません。
+  SDK内部の処理時間・スケジューリングまで含む実機上限は未実測です。
+- Wi-Fi接続・回復は既存`WiFiESP32`へ委譲します。同一通信所有者から使用し、
+  socket接続成功後に`reset()`、障害時に`disconnect()`、新接続で再度`reset()`してください。
+- 旧`TCPClientESP32`のAPI/実装は維持します。旧sendStringは部分送信量を確認しません。
+  新APIを使う製品だけ明示的に移行し、旧利用者へ変更を波及させません。
+
+```sh
+pio test -e native_tcp_legacy -e native_transport -e native_tcp_socket
+```
+
+偽時計・偽stream・偽lwIPによる試験です。実TCPや実機の遅延試験ではありません。
+GitHub Actionsの`transport-tests.yml`はローカルと同じ入口を持ちます（リモート実行は別途確認）。
 
 ### Timer
 

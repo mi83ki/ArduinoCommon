@@ -14,6 +14,7 @@ static const uint8_t HEX = 16;
 class String {
  public:
   String() = default;
+  String(char value) : _value(1, value) {}
   String(const char* value) : _value(value == nullptr ? "" : value) {}
   String(const char* value, unsigned int length)
       : _value(value == nullptr ? "" : std::string(value, length)) {}

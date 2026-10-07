@@ -23,12 +23,12 @@ class NeoPixelArrayBase {
   static uint32_t setFullBrightness(uint32_t inColor);
   static uint32_t getRGB(uint32_t inColor, uint8_t brightnessPercent);
   static uint32_t getComplementaryColor(uint32_t color);
+  void setBrightnessLevel(uint8_t brightness);
 
  protected:
   void fillAll(const CRGB& color);
   void fill(const CRGB& color, uint16_t first, uint16_t count);
   void setPixelColor(uint16_t index, const CRGB& color);
-  void setBrightnessLevel(uint8_t brightness);
   CRGB* colors(void);
   const CRGB* colors(void) const;
 

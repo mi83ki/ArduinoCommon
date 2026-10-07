@@ -263,6 +263,7 @@ uint32_t NeoPixelArrayBase::getComplementaryColor(uint32_t color) {
  */
 void NeoPixelArrayBase::setBrightnessLevel(uint8_t brightness) {
   FastLED.setBrightness(brightness);
+  _changed = true;
 }
 
 /**
