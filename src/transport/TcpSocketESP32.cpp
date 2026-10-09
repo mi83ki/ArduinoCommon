@@ -41,6 +41,12 @@ bool TcpSocketESP32::connect(const std::array<uint8_t, 4>& address, uint16_t por
   }
   _socket = lwip_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (_socket < 0) { return false; }
+  // 128 byteずつの制御応答をNagleと相手の遅延ACKで待たせない。
+  const int noDelay = 1;
+  if (lwip_setsockopt(_socket, IPPROTO_TCP, TCP_NODELAY,
+                      &noDelay, sizeof(noDelay)) < 0) {
+    close(); return false;
+  }
   const int flags = lwip_fcntl(_socket, F_GETFL, 0);
   if (flags < 0 || lwip_fcntl(_socket, F_SETFL, flags | O_NONBLOCK) < 0) {
     close(); return false;

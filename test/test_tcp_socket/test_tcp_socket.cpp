@@ -11,12 +11,22 @@ struct Calls {
   int socketError{0}, getError{0}, flagError{0};
   int readResult{-1}, writeResult{-1}, ioError{EWOULDBLOCK};
   int socketResult{7}, flags{0};
+  int noDelayCalls{0}, noDelayError{0};
   bool wifi{true};
   long timeoutUs{0};
   sockaddr_in address{};
 } calls;
 }
 FakeWiFi WiFi;
+/** @brief 小分け送信の即時送信オプションを検査し、設定失敗も再現する。 */
+int lwip_setsockopt(int, int level, int option, const void* value, socklen_t size) {
+  TEST_ASSERT_EQUAL(IPPROTO_TCP, level);
+  TEST_ASSERT_EQUAL(TCP_NODELAY, option);
+  TEST_ASSERT_EQUAL(sizeof(int), size);
+  TEST_ASSERT_EQUAL(1, *static_cast<const int*>(value));
+  ++calls.noDelayCalls;
+  return calls.noDelayError;
+}
 /** @brief 偽Wi-Fi状態を返す。 @return 接続状態。 */
 int FakeWiFi::status() const { return calls.wifi ? WL_CONNECTED : 0; }
 /** @brief 偽時計。 @return 固定ms。 */
@@ -135,11 +145,25 @@ void testSingleCallIoResults() {
   ArduinoMillisClock clock;
   TEST_ASSERT_EQUAL(123, clock.nowMs());
 }
+/** @brief 即時・非同期接続と再接続で即時送信を設定し、設定失敗では閉じる。 */
+void testNoDelayOnEveryConnectionAndFailure() {
+  TcpSocketESP32 socket;
+  TEST_ASSERT_TRUE(socket.connect({127, 0, 0, 1}, 23));
+  TEST_ASSERT_EQUAL(1, calls.noDelayCalls);
+  calls.connectResult = 0;
+  TEST_ASSERT_TRUE(socket.connect({127, 0, 0, 1}, 23));
+  TEST_ASSERT_EQUAL(2, calls.noDelayCalls);
+  calls.noDelayError = -1;
+  TEST_ASSERT_FALSE(socket.connect({127, 0, 0, 1}, 23));
+  TEST_ASSERT_EQUAL(3, calls.noDelayCalls);
+  TEST_ASSERT_EQUAL(3, calls.closes);
+}
 /** @brief ソケット公開APIを実行する。 @return Unity終了コード。 */
 int main() {
   UNITY_BEGIN();
   RUN_TEST(testNonblockingConnectAndLifetime);
   RUN_TEST(testConnectFailuresCloseDescriptor);
   RUN_TEST(testSingleCallIoResults);
+  RUN_TEST(testNoDelayOnEveryConnectionAndFailure);
   return UNITY_END();
 }
