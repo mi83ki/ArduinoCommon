@@ -1,6 +1,6 @@
 {
   "name": "Arduino Common Library",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "build": {
     "extraScript": "tools/select_sources.py"
   },
