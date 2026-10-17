@@ -209,6 +209,10 @@ SettingsStatus AtomicRecordStore::commit(uint32_t expectedGeneration,
   for (size_t i=0; i<_records.size(); ++i) {
     if (!changed[i]) continue;
     const char* key = _records[i].keys[current.slots[i]].c_str();
+    // 採用rootは反対側のスロットを参照している。非採用blobを先に解放し、
+    // NVS内で旧blob・新blobをさらに二重保持するための容量を要求しない。
+    status = _backend.remove(key);
+    if (status != SettingsStatus::Ok && status != SettingsStatus::NotFound) return status;
     status = _backend.write(key, encoded[i]);
     if (status != SettingsStatus::Ok) return status;
     SettingsBytes readback;
