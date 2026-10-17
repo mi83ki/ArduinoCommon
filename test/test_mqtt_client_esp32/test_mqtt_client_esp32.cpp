@@ -78,8 +78,43 @@ void test_set_server_reconnects_immediately_and_resubscribes(void) {
       "sensor/value", FakePubSubClientState::subscribeCalls[0].c_str());
 }
 
+/** @brief 起床直後の最初の接続確認で通信を開始し、予約応答の購読を復元する。 */
+void test_first_health_check_connects_before_five_seconds_and_subscribes(void) {
+  fakeMillis = 1000;
+  MQTTClientESP32 client("mqtt-primary.local", 1883);
+  client.subscribe("sensor/config/operations/response");
+  FakePubSubClientState::subscribeCalls.clear();
+  FakePubSubClientState::connectResult = true;
+
+  TEST_ASSERT_TRUE(client.healthCheck());
+  TEST_ASSERT_EQUAL_UINT32(1, FakePubSubClientState::connectCalls);
+  TEST_ASSERT_EQUAL_UINT32(1, FakePubSubClientState::subscribeCalls.size());
+  TEST_ASSERT_EQUAL_STRING("sensor/config/operations/response",
+                          FakePubSubClientState::subscribeCalls[0].c_str());
+}
+
+/** @brief 初回接続が失敗しても次の試行まで既存の待機間隔を保ち、連打しない。 */
+void test_failed_first_connection_waits_before_retrying(void) {
+  fakeMillis = 1000;
+  MQTTClientESP32 client("mqtt-primary.local", 1883);
+  FakePubSubClientState::connectResult = false;
+
+  TEST_ASSERT_FALSE(client.healthCheck());
+  TEST_ASSERT_EQUAL_UINT32(1, FakePubSubClientState::connectCalls);
+  FakePubSubClientState::connectResult = true;
+  for (fakeMillis = 1020; fakeMillis <= 6000; fakeMillis += 20) {
+    TEST_ASSERT_FALSE(client.healthCheck());
+  }
+  TEST_ASSERT_EQUAL_UINT32(1, FakePubSubClientState::connectCalls);
+  fakeMillis = 6001;
+  TEST_ASSERT_TRUE(client.healthCheck());
+  TEST_ASSERT_EQUAL_UINT32(2, FakePubSubClientState::connectCalls);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
+  RUN_TEST(test_first_health_check_connects_before_five_seconds_and_subscribes);
+  RUN_TEST(test_failed_first_connection_waits_before_retrying);
   RUN_TEST(test_constructor_sets_initial_server);
   RUN_TEST(test_set_server_is_noop_when_destination_is_unchanged);
   RUN_TEST(test_set_server_disconnects_and_updates_destination);
