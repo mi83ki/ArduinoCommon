@@ -90,6 +90,8 @@ SettingsStatus AtomicRecordStore::load(SettingsSnapshot& output) {
   if (!validOptions()) return SettingsStatus::InvalidArgument;
   SettingsSnapshot best;
   bool anyRoot = false;
+  struct CandidateRoot { uint8_t slot; DecodedRecord record; };
+  std::vector<CandidateRoot> candidates;
   for (uint8_t rootSlot = 0; rootSlot < 2; ++rootSlot) {
     SettingsBytes bytes;
     auto status = _backend.read(_roots.keys[rootSlot].c_str(), bytes, _roots.format.maximumSize);
@@ -103,9 +105,20 @@ SettingsStatus AtomicRecordStore::load(SettingsSnapshot& output) {
     if (status != SettingsStatus::Ok) return status;
     const size_t referenceSize = 9 * _records.size();
     if (root.payload.size() != referenceSize + _metadataSize) continue;
+    candidates.push_back({rootSlot, std::move(root)});
+  }
+  // rootの未知形式やI/O障害は先に検出し、参照先は新しい世代から検証する。
+  // 完全な最新rootを採用できれば、更新途中の非採用レコードは読まない。
+  std::sort(candidates.begin(), candidates.end(), [](const CandidateRoot& a, const CandidateRoot& b) {
+    return a.record.generation > b.record.generation;
+  });
+  for (const auto& entry : candidates) {
+    const auto& root = entry.record;
+    if (best.generation && root.generation < best.generation) break;
+    const size_t referenceSize = 9 * _records.size();
     SettingsSnapshot candidate;
     candidate.generation = root.generation;
-    candidate.rootSlot = rootSlot;
+    candidate.rootSlot = entry.slot;
     candidate.metadata.assign(root.payload.begin() + referenceSize, root.payload.end());
     bool complete = true;
     for (size_t i=0; i<_records.size(); ++i) {
@@ -114,7 +127,8 @@ SettingsStatus AtomicRecordStore::load(SettingsSnapshot& output) {
       const uint32_t generation = get32(root.payload, offset + 1);
       const uint32_t crc = get32(root.payload, offset + 5);
       if (slot > 1 || !generation || generation > root.generation) { complete = false; break; }
-      status = _backend.read(_records[i].keys[slot].c_str(), bytes, _records[i].format.maximumSize);
+      SettingsBytes bytes;
+      auto status = _backend.read(_records[i].keys[slot].c_str(), bytes, _records[i].format.maximumSize);
       if (invalidRecord(status)) { complete = false; break; }
       if (status != SettingsStatus::Ok) return status;
       DecodedRecord record;
