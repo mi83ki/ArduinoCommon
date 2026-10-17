@@ -16,7 +16,7 @@
 #ifndef MQTT_FEATURE_DISABLED
 
 /**
- * @brief Construct a new MQTTClientESP32::MQTTClientESP32 object
+ * @brief 初回の接続確認で即時接続し、短い起床時間でもMQTT通信を開始できる状態を作る。
  *
  * @param mqttHost MQTTブローカーのIPアドレス
  * @param mqttPort MQTTブローカーのポート番号
@@ -26,7 +26,7 @@ MQTTClientESP32::MQTTClientESP32(String mqttHost, uint16_t mqttPort, uint16_t bu
   : _mqttHost(mqttHost)
   , _mqttPort(mqttPort)
   , _lastReconnectAttempt(0)
-  , _reconnectImmediately(false)
+  , _reconnectImmediately(true)
   , _wifiClient(WiFiClient())
   , _mqttClient(PubSubClient(_wifiClient))
   , _messageCallbacks()
