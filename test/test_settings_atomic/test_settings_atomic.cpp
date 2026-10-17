@@ -188,8 +188,37 @@ void test_oversized_root_blocks_writes() {
   TEST_ASSERT_EQUAL(writes,backend.writes);
 }
 
+/** @brief 非採用レコードが読めなくても、最新rootが参照する完全な組を採用する。 */
+void test_unreferenced_old_record_error_does_not_hide_latest_bundle() {
+  class Backend : public MemorySettingsBackend {
+   public:
+    std::string unreadable;
+    SettingsStatus read(const char* key, SettingsBytes& out, size_t limit) override {
+      if(unreadable==key)return SettingsStatus::IoError;
+      return MemorySettingsBackend::read(key,out,limit);
+    }
+  };
+  for(unsigned updates : {1u,2u}) {
+    Backend backend;AtomicRecordStore store(backend,{first,second},roots,1);
+    STATUS(Ok,store.commit(0,{{0,{1}},{1,{2}}},{9}));
+    for(unsigned i=1;i<=updates;++i)STATUS(Ok,store.commit(i,{{0,{uint8_t(i+1)}},{1,{uint8_t(i+2)}}},{9}));
+    backend.unreadable=updates==1?"cfg0":"cfg1";
+    AtomicRecordStore restarted(backend,{first,second},roots,1);SettingsSnapshot snapshot;
+    STATUS(Ok,restarted.load(snapshot));
+    TEST_ASSERT_EQUAL_UINT32(updates+1,snapshot.generation);
+    TEST_ASSERT_EQUAL_UINT8(updates+1,snapshot.records[0].payload[0]);
+    // 最新rootの参照先にI/O障害があれば、古い値を正常扱いしない。
+    backend.unreadable=updates==1?"cfg1":"cfg0";
+    STATUS(IoError,restarted.load(snapshot));
+    const auto writes=backend.writes;
+    STATUS(IoError,restarted.commit(updates+1,{{0,{8}}},{9}));
+    TEST_ASSERT_EQUAL_INT(writes,backend.writes);
+  }
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_unreferenced_old_record_error_does_not_hide_latest_bundle);
   RUN_TEST(test_initial_bundle_and_reload);
   RUN_TEST(test_partial_update_and_conflict);
   RUN_TEST(test_every_write_boundary_keeps_a_complete_bundle);
