@@ -221,6 +221,9 @@ SettingsStatus AtomicRecordStore::commit(uint32_t expectedGeneration,
   }
   const uint8_t rootSlot = initial ? 0 : uint8_t(current.rootSlot ^ 1);
   const char* rootKey = _roots.keys[rootSlot].c_str();
+  // 採用中のrootを残し、非採用側を先に解放してNVSの新旧blob同時保持を避ける。
+  status = _backend.remove(rootKey);
+  if (status != SettingsStatus::Ok && status != SettingsStatus::NotFound) return status;
   _uncertain = true;
   if (_backend.write(rootKey, rootBytes) != SettingsStatus::Ok) return SettingsStatus::Indeterminate;
   SettingsBytes readback;

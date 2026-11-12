@@ -216,8 +216,89 @@ void test_unreferenced_old_record_error_does_not_hide_latest_bundle() {
   }
 }
 
+/** @brief 新旧blobを同時保持できない空き容量でも、非採用rootを更新できる。 */
+void test_root_replacement_fits_without_a_third_copy() {
+  class Backend : public MemorySettingsBackend {
+   public:
+    size_t capacity=SIZE_MAX;
+    size_t used() const {size_t total=0;for(const auto& entry:values)total+=entry.second.size();return total;}
+    SettingsStatus write(const char* key,const SettingsBytes& bytes) override {
+      if(used()+bytes.size()>capacity)return SettingsStatus::IoError;
+      return MemorySettingsBackend::write(key,bytes);
+    }
+  } backend;
+  AtomicRecordStore store(backend,{first,second},roots,1);
+  STATUS(Ok,store.commit(0,{{0,{1}},{1,{2}}},{1}));
+  STATUS(Ok,store.commit(1,{{0,{3}},{1,{4}}},{2}));
+  backend.capacity=backend.used();
+  const auto config=backend.values["cfg1"],calibration=backend.values["cal1"];
+  for(uint32_t generation=2;generation<6;++generation) {
+    STATUS(Ok,store.commit(generation,{}, {uint8_t(generation+1)}));
+    AtomicRecordStore restarted(backend,{first,second},roots,1);SettingsSnapshot snapshot;
+    STATUS(Ok,restarted.load(snapshot));
+    TEST_ASSERT_EQUAL_UINT32(generation+1,snapshot.generation);
+    TEST_ASSERT_EQUAL_UINT8(3,snapshot.records[0].payload[0]);
+    TEST_ASSERT_EQUAL_UINT8(4,snapshot.records[1].payload[0]);
+    TEST_ASSERT_TRUE(config==backend.values["cfg1"]);
+    TEST_ASSERT_TRUE(calibration==backend.values["cal1"]);
+  }
+}
+
+/** @brief 非採用rootの解放失敗や途中停止でも、採用中の完全な設定を保持する。 */
+void test_failed_root_release_preserves_the_adopted_bundle() {
+  class Backend : public MemorySettingsBackend {
+   public:
+    bool fail=false,durable=false;
+    SettingsStatus remove(const char* key) override {
+      if(fail&&std::string(key)=="root0") {
+        if(durable)MemorySettingsBackend::remove(key);
+        return SettingsStatus::IoError;
+      }
+      return MemorySettingsBackend::remove(key);
+    }
+  };
+  for(bool durable:{false,true}) {
+    Backend backend;AtomicRecordStore store(backend,{first,second},roots,1);
+    STATUS(Ok,store.commit(0,{{0,{1}},{1,{2}}},{1}));
+    STATUS(Ok,store.commit(1,{{0,{3}},{1,{4}}},{2}));
+    const auto adoptedRoot=backend.values["root1"];
+    backend.fail=true;backend.durable=durable;
+    STATUS(IoError,store.commit(2,{{0,{5}},{1,{6}}},{3}));
+    TEST_ASSERT_TRUE(adoptedRoot==backend.values["root1"]);
+    AtomicRecordStore restarted(backend,{first,second},roots,1);SettingsSnapshot snapshot;
+    STATUS(Ok,restarted.load(snapshot));
+    TEST_ASSERT_EQUAL_UINT32(2,snapshot.generation);
+    TEST_ASSERT_EQUAL_UINT8(3,snapshot.records[0].payload[0]);
+    TEST_ASSERT_EQUAL_UINT8(4,snapshot.records[1].payload[0]);
+  }
+}
+
+/** @brief rootを再利用する世代での全書込み境界でも、旧組か新組だけを採用する。 */
+void test_reused_root_write_failures_keep_a_complete_bundle() {
+  for(int position=1;position<=3;++position)for(int failureMode=0;failureMode<3;++failureMode) {
+    MemorySettingsBackend backend;AtomicRecordStore store(backend,{first,second},roots,1);
+    STATUS(Ok,store.commit(0,{{0,{1}},{1,{2}}},{1}));
+    STATUS(Ok,store.commit(1,{{0,{3}},{1,{4}}},{2}));
+    backend.writes=0;backend.failWrite=position;
+    backend.durableFailure=failureMode==1;backend.failReadback=failureMode==2;
+    const auto result=store.commit(2,{{0,{5}},{1,{6}}},{3});
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(position==3?SettingsStatus::Indeterminate:SettingsStatus::IoError),static_cast<int>(result));
+    backend.readbackPending=false;
+    AtomicRecordStore restarted(backend,{first,second},roots,1);SettingsSnapshot snapshot;
+    STATUS(Ok,restarted.load(snapshot));
+    const bool adopted=position==3&&failureMode!=0;
+    TEST_ASSERT_EQUAL_UINT32(adopted?3:2,snapshot.generation);
+    TEST_ASSERT_EQUAL_UINT8(adopted?5:3,snapshot.records[0].payload[0]);
+    TEST_ASSERT_EQUAL_UINT8(adopted?6:4,snapshot.records[1].payload[0]);
+    TEST_ASSERT_EQUAL_UINT8(adopted?3:2,snapshot.metadata[0]);
+  }
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_root_replacement_fits_without_a_third_copy);
+  RUN_TEST(test_failed_root_release_preserves_the_adopted_bundle);
+  RUN_TEST(test_reused_root_write_failures_keep_a_complete_bundle);
   RUN_TEST(test_unreferenced_old_record_error_does_not_hide_latest_bundle);
   RUN_TEST(test_initial_bundle_and_reload);
   RUN_TEST(test_partial_update_and_conflict);
